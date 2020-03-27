@@ -7,8 +7,8 @@ library("readxl") #read excel files #only 1 Q_in
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("data/Possum Kingdom Lk_09_10.xlsx") %>% 
-  map(~read_xlsx("data/Possum Kingdom Lk_09_10.xlsx",.)) %>%
+y <- excel_sheets("data/Lake Overholser_13_14.xlsx") %>% 
+  map(~read_xlsx("data/Lake Overholser_13_14.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -26,6 +26,19 @@ tidy <- function(s){
   
   return(s)
 }
+
+### For observed value ending without 00003
+###tidy <- function(s){ 
+###s <- s %>%
+###  select(., datetime, contains("site_no"), c(4,9,14)) %>%
+###  filter(., site_no != "15s") %>%
+###  rename_at(vars(c(5,6,7)), ~ n) %>%
+###  rename_at(vars(contains("site")), ~ m) 
+
+###s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30")
+
+###return(s)
+###}
 
 y <- tidy(y)
 
