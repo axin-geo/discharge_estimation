@@ -1,5 +1,5 @@
-#install.packages(c("dplyer", "tidyverse"))
-library("dplyer")
+#install.packages(c("dplyer", "tidyverse","ggplot2"))
+library("dplyr")
 library("rio")
 library("tidyverse")
 library("readxl") #read excel files #only 1 Q_in
@@ -7,8 +7,8 @@ library("readxl") #read excel files #only 1 Q_in
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("data/Lake Overholser_13_14.xlsx") %>% 
-  map(~read_xlsx("data/Lake Overholser_13_14.xlsx",.)) %>%
+y <- excel_sheets("data/Lake Conroe_13_14.xlsx") %>% 
+  map(~read_xlsx("data/Lake Conroe_13_14.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -17,9 +17,9 @@ m = c("site_V", "site_out", "site_in")
 
 tidy <- function(s){ 
   s <- s %>%
-    select(., datetime, contains("site_no"), ends_with("00003")) %>%
+    select(., datetime, contains("site_no"), ends_with(c("32400","30800")), contains("00003"),-contains("cd")) %>%
     filter(., site_no != "15s") %>%
-    rename_at(vars(ends_with("0003")), ~ n) %>%
+    rename_at(vars(c(5,6,7)), ~ n) %>%
     rename_at(vars(contains("site")), ~ m) 
   
   s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30")
@@ -27,20 +27,9 @@ tidy <- function(s){
   return(s)
 }
 
-### For observed value ending without 00003
-###tidy <- function(s){ 
-###s <- s %>%
-###  select(., datetime, contains("site_no"), c(4,9,14)) %>%
-###  filter(., site_no != "15s") %>%
-###  rename_at(vars(c(5,6,7)), ~ n) %>%
-###  rename_at(vars(contains("site")), ~ m) 
-
-###s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30")
-
-###return(s)
-###}
-
 y <- tidy(y)
+View(y)
+
 
 ##convert xlsx to csv
 ##convert("Possum Kingdom Lk_09_10.xlsx","Possum Kingdom Lk_09_10.csv")
