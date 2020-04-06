@@ -7,8 +7,8 @@ library("readxl") #read excel files #only 1 Q_in
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("data/Lake Conroe_13_14.xlsx") %>% 
-  map(~read_xlsx("data/Lake Conroe_13_14.xlsx",.)) %>%
+y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_2_in_1/LAKE_MOHAVE.xlsx") %>% 
+  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_2_in_1/LAKE_MOHAVE.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
