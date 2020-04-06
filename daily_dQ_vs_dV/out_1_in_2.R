@@ -7,8 +7,8 @@ library("readxl") #read excel files out_1_in_2
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_84_85.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_84_85.xlsx",.)) %>%
+y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_78_85.xlsx") %>% 
+  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_78_85.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -37,7 +37,7 @@ View(y)
 #dV vs dQ
 
 ##Unit Conversion
-convert_af_mcm = 1000*1233.48/10.0^6 #convert from acre feet to million m3
+convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
