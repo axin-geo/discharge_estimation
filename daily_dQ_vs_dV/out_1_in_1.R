@@ -1,4 +1,4 @@
-#install.packages(c("dplyer", "tidyverse","ggplot2"))
+#install.packages(c("dplyer", "tidyverse","ggplot2", "xts"))
 library("dplyr")
 library("rio")
 library("tidyverse")
@@ -7,8 +7,8 @@ library("readxl") #read excel files #only 1 Q_in
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/Tributaries/West Point lake_13_14_notribu.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/Tributaries/West Point lake_13_14_notribu.xlsx",.)) %>%
+y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/MILFORD LK_13_14.xlsx") %>% 
+  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/MILFORD LK_13_14.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -37,7 +37,7 @@ View(y)
 #dV vs dQ
 
 ##Unit Conversion
-convert_af_mcm = 1000 * 1233.48/10.0^6 #convert from acre feet to million m3
+convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
@@ -73,3 +73,93 @@ ggplot(y) +
 
 #correlation
 cor(y$dV, y$dQ, use = "complete.obs")
+
+
+# SWOT time scale
+
+# Uncertainty Analysis
+
+
+
+gap <- 7 # sampling gap/ temporal resolution
+indices <- 
+  
+
+
+
+
+u1 <- seq(from = 1, to = nrow(y), by = gap)
+u2 <- seq(from = 2, to = nrow(y), by = gap)
+u3 <- seq(from = 3, to = nrow(y), by = gap)
+u4 <- seq(from = 4, to = nrow(y), by = gap)
+u5 <- seq(from = 5, to = nrow(y), by = gap)
+u6 <- seq(from = 6, to = nrow(y), by = gap)
+u7 <- seq(from = 7, to = nrow(y), by = gap)
+
+a <- 1
+N <- rep(NA, 6)
+# adding NA to u. starting from 1
+r <- rbind(u1, matrix(ncol = length(u1), nrow = 6))
+r_NA <- c(r)
+length(r_NA) <- nrow(y)
+
+# u2
+
+
+while (length(u) <= 200) { # nrow(y))#
+
+  u <- c(u[a],N ,u[a+1: ]); 
+  a <- a+1
+  
+}
+
+
+
+
+
+t_slice <- slice(t, x1)
+View(t_slice)
+plot(t_slice$datetime, t_slice$dQ, type = "l")
+
+plot(t$datetime, t$dQ, type = "l", add = TRUE)
+
+
+library(zoo)
+library(xts)
+
+z <- zoo(c(2,NA,1,4,5,2), c(1,3,4,6,7,8))
+
+## use underlying time scale for interpolation
+na.approx(z) 
+  
+t <- zoo(t, order.by = t$datetime)
+na.approx(t) 
+
+
+
+library(imputeTS)
+# set original data as TS file 
+x <- zoo(as.numeric(t$dQ), t$datetime)
+
+# assign NA to non-7-multiple
+t <- y  
+row <- seq(from = 1, to = nrow(y)) # adding rownumber as a new column
+t_row <- cbind(t, row)
+
+gap2 <- seq(from = 2, to = nrow(y), by = gap)
+w <- data.frame(c(NA, gap2, NA))
+names(w)[1] <- "w"
+t_row1 <- right_join(t_row,w , by = c("row" = "w"), keep= TRUE)
+
+
+
+# interpolate NA
+
+x[c(1:6,11)]<- NA
+x <- na_interpolation(x, option = "linear")
+
+
+
+## get every column out 
+
+

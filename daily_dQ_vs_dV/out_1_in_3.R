@@ -1,5 +1,5 @@
 #install.packages(c("dplyer", "tidyverse","ggplot2"))
-library("dplyr")
+library("dplyr")/
 library("rio")
 library("tidyverse")
 library("readxl") #read excel files #only 1 Q_in
@@ -38,8 +38,7 @@ View(y)
 
 ##Unit Conversion
 convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
-convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
-y$V <- as.numeric(y$V) * convert_af_mcm; 
+convert_cfs_mcmd = 3600.0*24.0*0.0283167p6532 1~
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
 y$Q_in1 <- as.numeric(y$Q_in1) * convert_cfs_mcmd; 
 y$Q_in2 <- as.numeric(y$Q_in2) * convert_cfs_mcmd;
