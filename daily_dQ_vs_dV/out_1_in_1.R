@@ -82,11 +82,6 @@ cor(y$dV, y$dQ, use = "complete.obs")
 
 
 gap <- 7 # sampling gap/ temporal resolution
-indices <- 
-  
-
-
-
 
 u1 <- seq(from = 1, to = nrow(y), by = gap)
 u2 <- seq(from = 2, to = nrow(y), by = gap)
@@ -100,28 +95,41 @@ a <- 1
 N <- rep(NA, 6)
 # adding NA to u. starting from 1
 r <- rbind(u1, matrix(ncol = length(u1), nrow = 6))
-r_NA <- c(r)
+r1_NA <- c(rep(NA,1-1),r)
 length(r_NA) <- nrow(y)
 
 # u2
+r2 <- rbind(u2, matrix(ncol = length(u2), nrow = 6))
+r2_NA <- c(rep(NA,2-1), r2)
+length(r2_NA) <- nrow(y)
+
+# u3
+r3 <- rbind(u3, matrix(ncol = length(u3), nrow = 6))
+r3_NA <- c(rep(NA,3-1), r3)
+length(r3_NA) <- nrow(y)
+
+# u4
+r4 <- rbind(u4, matrix(ncol = length(u4), nrow = 6))
+r4_NA <- c(rep(NA,4-1), r4)
+length(r4_NA) <- nrow(y)
+
+# joining u to the y
+
+t <- y  
+t_1 <- zoo(as.numeric(t$dQ), t$datetime)
+# View(t_1)
+row <- seq(from = 1, to = nrow(y))
+t_1 <- cbind(t_1, row)  # adding rownumber as a new column
 
 
-while (length(u) <= 200) { # nrow(y))#
+ct <- zoo(r1_NA, t$datetime)
+# View(ct)
 
-  u <- c(u[a],N ,u[a+1: ]); 
-  a <- a+1
-  
-}
-
-
+t_row1 <- merge(t_1, ct)
+# View(t_row1)
+t_in <- na.approx(t_row1)
 
 
-
-t_slice <- slice(t, x1)
-View(t_slice)
-plot(t_slice$datetime, t_slice$dQ, type = "l")
-
-plot(t$datetime, t$dQ, type = "l", add = TRUE)
 
 
 library(zoo)
@@ -139,17 +147,15 @@ na.approx(t)
 
 library(imputeTS)
 # set original data as TS file 
-x <- zoo(as.numeric(t$dQ), t$datetime)
+
 
 # assign NA to non-7-multiple
-t <- y  
-row <- seq(from = 1, to = nrow(y)) # adding rownumber as a new column
-t_row <- cbind(t, row)
+
 
 gap2 <- seq(from = 2, to = nrow(y), by = gap)
 w <- data.frame(c(NA, gap2, NA))
 names(w)[1] <- "w"
-t_row1 <- right_join(t_row,w , by = c("row" = "w"), keep= TRUE)
+
 
 
 
