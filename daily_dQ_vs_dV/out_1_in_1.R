@@ -3,12 +3,13 @@ library("dplyr")
 library("rio")
 library("tidyverse")
 library("readxl") #read excel files #only 1 Q_in
+library("xts")
 
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/MILFORD LK_13_14.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/MILFORD LK_13_14.xlsx",.)) %>%
+y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/Lake Havasu_13_14_OUT_1.xlsx") %>% 
+  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/Lake Havasu_13_14_OUT_1.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -34,8 +35,8 @@ View(y)
 ##convert xlsx to csv
 ##convert("Possum Kingdom Lk_09_10.xlsx","Possum Kingdom Lk_09_10.csv")
 
+###############################################################################################################
 #dV vs dQ
-
 ##Unit Conversion
 convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
@@ -74,98 +75,93 @@ ggplot(y) +
 #correlation
 cor(y$dV, y$dQ, use = "complete.obs")
 
-
-# SWOT time scale
-
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
 # Uncertainty Analysis
+R <- 20 # sampling gap/ temporal resolution
 
+N <- rep(NA, R-1)
+dy <- y %>%
+  select(., datetime, dQ, dV)
+mx <- matrix(nrow = nrow(dy))
 
-
-gap <- 7 # sampling gap/ temporal resolution
-
-u1 <- seq(from = 1, to = nrow(y), by = gap)
-u2 <- seq(from = 2, to = nrow(y), by = gap)
-u3 <- seq(from = 3, to = nrow(y), by = gap)
-u4 <- seq(from = 4, to = nrow(y), by = gap)
-u5 <- seq(from = 5, to = nrow(y), by = gap)
-u6 <- seq(from = 6, to = nrow(y), by = gap)
-u7 <- seq(from = 7, to = nrow(y), by = gap)
-
-a <- 1
-N <- rep(NA, 6)
-# adding NA to u. starting from 1
-r <- rbind(u1, matrix(ncol = length(u1), nrow = 6))
-r1_NA <- c(rep(NA,1-1),r)
-length(r_NA) <- nrow(y)
-
-# u2
-r2 <- rbind(u2, matrix(ncol = length(u2), nrow = 6))
-r2_NA <- c(rep(NA,2-1), r2)
-length(r2_NA) <- nrow(y)
-
-# u3
-r3 <- rbind(u3, matrix(ncol = length(u3), nrow = 6))
-r3_NA <- c(rep(NA,3-1), r3)
-length(r3_NA) <- nrow(y)
-
-# u4
-r4 <- rbind(u4, matrix(ncol = length(u4), nrow = 6))
-r4_NA <- c(rep(NA,4-1), r4)
-length(r4_NA) <- nrow(y)
-
-# joining u to the y
-
-t <- y  
-t_1 <- zoo(as.numeric(t$dQ), t$datetime)
-# View(t_1)
-row <- seq(from = 1, to = nrow(y))
-t_1 <- cbind(t_1, row)  # adding rownumber as a new column
-
-
-ct <- zoo(r1_NA, t$datetime)
-# View(ct)
-
-t_row1 <- merge(t_1, ct)
-# View(t_row1)
-t_in <- na.approx(t_row1)
-
-
-
-
-library(zoo)
-library(xts)
-
-z <- zoo(c(2,NA,1,4,5,2), c(1,3,4,6,7,8))
-
-## use underlying time scale for interpolation
-na.approx(z) 
+# y is the results we have 
+for (i in 1:R) {
+  # create a sequence of days that are sampled
+  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) # adding R-1 rows of NA of sequence
   
-t <- zoo(t, order.by = t$datetime)
-na.approx(t) 
+  r_NA <- c(rep(NA,i-1), r) # adding NA before the first value from the vector
+  length(r_NA) <- nrow(y) # length correction 
+  
+  mx <- as.data.frame(cbind(mx, r_NA)); names(mx)[i+1] <- paste0(c("dQ"), i)
+}
+mx <- subset(mx, select = -V1) # dropping defaut column from df
 
 
+###############################################################################################################
+# joining sampling days (mx) to the dy (here we are testing on t)
+mx <- zoo(mx, dy$datetime) # convert mx to time series object
 
-library(imputeTS)
-# set original data as TS file 
-
-
-# assign NA to non-7-multiple
-
-
-gap2 <- seq(from = 2, to = nrow(y), by = gap)
-w <- data.frame(c(NA, gap2, NA))
-names(w)[1] <- "w"
+t <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
 
 
+day <- seq(from = 1, to = nrow(dy)); t <- cbind(t, day)  # adding # of days as a new column
 
 
-# interpolate NA
+t <- merge(t, mx)
 
-x[c(1:6,11)]<- NA
-x <- na_interpolation(x, option = "linear")
+# adding values for sampling days in different scenarios
+for (i in 1:R){
+  
+  for (j in 1:nrow(t)){
+    
+    if (!is.na(t[j, i+3]))
+      t[j, i+3] <- t[j, 1]
+    
+  }
+}
 
 
+# interpolate
+t <- na_interpolation(t, option = "linear") %>%
+  subset(., select = -day)
 
-## get every column out 
 
+t_error <- t %>%
+  subset(., select = -c(dQ,dV)) %>%
+  fortify.zoo() %>%
+  select(-Index)
+  
+t_error$max <- apply(X = t_error, MARGIN=1, FUN=max)
+t_error$min <- apply(X = t_error, MARGIN=1, FUN=min)
+
+t_error <- t_error %>%
+  select(max, min) %>%
+  zoo(., order.by = dy$datetime)
+
+t_2 <- t %>%
+  subset(., select= c(dQ,dV)) %>%
+  merge(., t_error)
+
+# Plot with upper/lower bars
+dygraph(t_2, 
+        main = paste("Uncertainty Analysis for SWOT Observations (Sampling Gap: ", R, "days)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%
+  dySeries("dV", label = "Observed dV", color = "seagreen") %>%
+  dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.2,
+              hideOnMouseOut = TRUE)
+
+# Plot showing uncertainty as lines
+# dygraph(t, 
+#        main = paste0("Uncertainty Analysis for SWOT Observations (Sampling Gap: ", R, ")"),
+#        ylab = "Storage change (km^3 / day)") %>% 
+#  dyRangeSelector() %>%
+#  dySeries("dV", color = "seagreen") %>%
+#  dySeries("dQ", color = "red") %>%
+#  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) %>%
+#  dyLegend(width = 600) 
 
