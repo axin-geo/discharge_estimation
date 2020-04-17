@@ -4,6 +4,9 @@ library("rio")
 library("tidyverse")
 library("readxl") #read excel files out_1_in_2
 
+
+s_name <- "Choke Canyon_15_16" # sample name
+
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
@@ -93,3 +96,93 @@ ggplot(y) +
   ),
   linetype = "dashed"
   )
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
+# Uncertainty Analysis
+R <- 10 # sampling gap/ temporal resolution
+
+N <- rep(NA, R-1)
+dy <- y %>%
+  select(., datetime, dQ, dV)
+mx <- matrix(nrow = nrow(dy))
+
+# y is the results we have 
+for (i in 1:R) {
+  # create a sequence of days that are sampled
+  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) # adding R-1 rows of NA of sequence
+  
+  r_NA <- c(rep(NA,i-1), r) # adding NA before the first value from the vector
+  length(r_NA) <- nrow(y) # length correction 
+  
+  mx <- as.data.frame(cbind(mx, r_NA)); names(mx)[i+1] <- paste0(c("dQ"), i)
+}
+mx <- subset(mx, select = -V1) # dropping defaut column from df
+
+
+###############################################################################################################
+# joining sampling days (mx) to the dy (here we are testing on t)
+mx <- zoo(mx, dy$datetime) # convert mx to time series object
+
+t <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
+
+
+day <- seq(from = 1, to = nrow(dy)); t <- cbind(t, day)  # adding # of days as a new column
+
+
+t <- merge(t, mx)
+
+# adding values for sampling days in different scenarios
+for (i in 1:R){
+  
+  for (j in 1:nrow(t)){
+    
+    if (!is.na(t[j, i+3]))
+      t[j, i+3] <- t[j, 1]
+    
+  }
+}
+
+
+# interpolate
+t <- na_interpolation(t, option = "linear") %>%
+  subset(., select = -day)
+
+
+t_error <- t %>%
+  subset(., select = -c(dQ,dV)) %>%
+  fortify.zoo() %>%
+  select(-Index)
+
+t_error$max <- apply(X = t_error, MARGIN=1, FUN=max)
+t_error$min <- apply(X = t_error, MARGIN=1, FUN=min)
+
+t_error <- t_error %>%
+  select(max, min) %>%
+  zoo(., order.by = dy$datetime)
+
+t_2 <- t %>%
+  subset(., select= c(dQ,dV)) %>%
+  merge(., t_error)
+
+# Plot with upper/lower bars
+dygraph(t_2, 
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%
+  dySeries("dV", label = "Observed dV", color = "seagreen") %>%
+  dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.2,
+              hideOnMouseOut = TRUE)
+
+# Plot showing uncertainty as lines
+dygraph(t, 
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries("dV", color = "seagreen") %>%
+  dySeries("dQ", color = "red") %>%
+  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) %>%
+  dyLegend(width = 600) 
+

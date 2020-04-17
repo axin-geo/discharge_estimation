@@ -12,6 +12,8 @@ y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Ao
   map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/Lake Havasu_13_14_OUT_1.xlsx",.)) %>%
   data.frame()
 
+s_name <- "Lake Havasu_13_14"
+
 ##tidy data
 n = c("V", "Q_out", "Q_in")
 m = c("site_V", "site_out", "site_in")
@@ -79,7 +81,7 @@ cor(y$dV, y$dQ, use = "complete.obs")
 ###############################################################################################################
 ###############################################################################################################
 # Uncertainty Analysis
-R <- 20 # sampling gap/ temporal resolution
+R <- 10 # sampling gap/ temporal resolution
 
 N <- rep(NA, R-1)
 dy <- y %>%
@@ -146,7 +148,7 @@ t_2 <- t %>%
 
 # Plot with upper/lower bars
 dygraph(t_2, 
-        main = paste("Uncertainty Analysis for SWOT Observations (Sampling Gap: ", R, "days)"),
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
         ylab = "Storage change (km^3 / day)") %>% 
   dyRangeSelector() %>%
   dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%

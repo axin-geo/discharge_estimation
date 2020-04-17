@@ -4,11 +4,12 @@ library("rio")
 library("tidyverse")
 library("readxl") #read excel files #only 1 Q_in
 
+s_name <- "SHASTA LK_13_14" # sample name
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_2_in_1/Lake Havasu_13_14_OUT_1.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_2_in_1/Lake Havasu_13_14_OUT_1.xlsx",.)) %>%
+y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/SHASTA LK_13_14.xlsx") %>% 
+  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/SHASTA LK_13_14.xlsx",.)) %>%
   data.frame()
 
 ##tidy data
@@ -38,7 +39,7 @@ View(y)
 
 ##Unit Conversion
 convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
-convert_cfs_mcmd = 3600.0*24.0*0.0283167p6532 1~
+convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
 y$Q_in1 <- as.numeric(y$Q_in1) * convert_cfs_mcmd; 
 y$Q_in2 <- as.numeric(y$Q_in2) * convert_cfs_mcmd;
@@ -75,3 +76,4 @@ ggplot(y) +
 
 #correlation
 cor(y$dV, y$dQ, use = "complete.obs")
+
