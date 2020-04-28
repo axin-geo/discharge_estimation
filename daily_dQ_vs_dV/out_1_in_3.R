@@ -4,15 +4,16 @@ library("rio")
 library("tidyverse")
 library("readxl") #read excel files #only 1 Q_in
 
-s_name <- "SHASTA LK_13_14" # sample name
+s_name <- "Lake O' the Cherokees_18_19" # sample name
+
 #cleaning spreadsheets
 
-##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/SHASTA LK_13_14.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/SHASTA LK_13_14.xlsx",.)) %>%
+## convert multiple sheets from Excel into one sheet
+y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/", s_name, ".xlsx")) %>% 
+  map(~read_xlsx(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_3/", s_name, ".xlsx"),.)) %>%
   data.frame()
 
-##tidy data
+## tidy data
 n = c("V", "Q_out", "Q_in1", "Q_in2", "Q_in3")
 m = c("site_V", "site_out", "site_in1", "site_in2", "site_in3")
 
@@ -40,6 +41,7 @@ View(y)
 ##Unit Conversion
 convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
+y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
 y$Q_in1 <- as.numeric(y$Q_in1) * convert_cfs_mcmd; 
 y$Q_in2 <- as.numeric(y$Q_in2) * convert_cfs_mcmd;
@@ -76,4 +78,94 @@ ggplot(y) +
 
 #correlation
 cor(y$dV, y$dQ, use = "complete.obs")
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
+# Uncertainty Analysis
+R <- 10 # sampling gap/ temporal resolution
+
+N <- rep(NA, R-1)
+dy <- y %>%
+  select(., datetime, dQ, dV)
+mx <- matrix(nrow = nrow(dy))
+
+# y is the results we have 
+for (i in 1:R) {
+  # create a sequence of days that are sampled
+  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) # adding R-1 rows of NA of sequence
+  
+  r_NA <- c(rep(NA,i-1), r) # adding NA before the first value from the vector
+  length(r_NA) <- nrow(y) # length correction 
+  
+  mx <- as.data.frame(cbind(mx, r_NA)); names(mx)[i+1] <- paste0(c("dQ"), i)
+}
+mx <- subset(mx, select = -V1) # dropping defaut column from df
+
+
+###############################################################################################################
+# joining sampling days (mx) to the dy (here we are testing on t)
+mx <- zoo(mx, dy$datetime) # convert mx to time series object
+
+t <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
+
+
+day <- seq(from = 1, to = nrow(dy)); t <- cbind(t, day)  # adding # of days as a new column
+
+
+t <- merge(t, mx)
+
+# adding values for sampling days in different scenarios
+for (i in 1:R){
+  
+  for (j in 1:nrow(t)){
+    
+    if (!is.na(t[j, i+3]))
+      t[j, i+3] <- t[j, 1]
+    
+  }
+}
+
+
+# interpolate
+t <- na_interpolation(t, option = "linear") %>%
+  subset(., select = -day)
+
+
+t_error <- t %>%
+  subset(., select = -c(dQ,dV)) %>%
+  fortify.zoo() %>%
+  select(-Index)
+
+t_error$max <- apply(X = t_error, MARGIN=1, FUN=max)
+t_error$min <- apply(X = t_error, MARGIN=1, FUN=min)
+
+t_error <- t_error %>%
+  select(max, min) %>%
+  zoo(., order.by = dy$datetime)
+
+t_2 <- t %>%
+  subset(., select= c(dQ,dV)) %>%
+  merge(., t_error)
+
+# Plot with upper/lower bars
+# dygraph(t_2, 
+#        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+#        ylab = "Storage change (km^3 / day)") %>% 
+#  dyRangeSelector() %>%
+#  dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%
+#  dySeries("dV", label = "Observed dV", color = "seagreen") %>%
+#  dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.2,
+              hideOnMouseOut = TRUE)
+
+# Plot showing uncertainty as lines
+dygraph(t, 
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries("dV", color = "seagreen") %>%
+  dySeries("dQ", color = "red") %>%
+  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) %>%
+  dyLegend(width = 600) 
+
 

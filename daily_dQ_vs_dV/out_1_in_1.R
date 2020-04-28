@@ -1,59 +1,56 @@
-#install.packages(c("dplyer", "tidyverse","ggplot2", "xts"))
+# installing and loading packages
+# install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
 library("dplyr")
 library("rio")
 library("tidyverse")
-library("readxl") #read excel files #only 1 Q_in
+library("readxl")
 library("xts")
+library("dygraphs")
+library("imputeTS")
 
-#cleaning spreadsheets
+s_name <- "Lake Havasu_13_14_OUT_1"
+R <- 10 # sampling gap / temporal resolution
 
-##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/Lake Havasu_13_14_OUT_1.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/Lake Havasu_13_14_OUT_1.xlsx",.)) %>%
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
+# cleaning spreadsheets
+## convert multiple sheets from Excel into one sheet
+y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")) %>% 
+  map(~read_xlsx(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx"),.)) %>%
   data.frame()
 
-s_name <- "Lake Havasu_13_14"
-
-##tidy data
+## tidy data
 n = c("V", "Q_out", "Q_in")
 m = c("site_V", "site_out", "site_in")
 
 tidy <- function(s){ 
   s <- s %>%
-    select(., datetime, contains("site_no"), ends_with(c("32400","30800", "30600")), contains("00003"),-contains("cd")) %>%
-    filter(., site_no != "15s") %>%
-    rename_at(vars(c(5,6,7)), ~ n) %>%
-    rename_at(vars(contains("site")), ~ m) 
+    select(., datetime, contains("site_no"), ends_with(c("32400","30800","30600")), contains("00003"),-contains("cd")) %>%
+    filter(., site_no != "15s") %>% rename_at(vars(c(5,6,7)), ~ n) %>% rename_at(vars(contains("site")), ~ m) 
   
   s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30")
-  
   return(s)
 }
 
-y <- tidy(y)
-View(y)
-
-
-##convert xlsx to csv
-##convert("Possum Kingdom Lk_09_10.xlsx","Possum Kingdom Lk_09_10.csv")
-
+y <- tidy(y); View(y)
 ###############################################################################################################
-#dV vs dQ
-##Unit Conversion
-convert_af_mcm = 1233.48/10.0^6 #convert from acre feet to million m3
+# daily dV vs dQ
+## Unit Conversion
+convert_af_mcm = 1233.48/10.0^6 #convert from Thousand acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
 y$Q_in <- as.numeric(y$Q_in) * convert_cfs_mcmd; 
 
-##calculate mass balance
-dV <- y$V %>%
-  append(.,NA, 0); length(dV) <- nrow(y); dV <- y$V - dV
+## calculate mass balance
+dV <- y$V %>% append(.,NA, 0); length(dV) <- nrow(y); dV <- y$V - dV
 
-y <- y %>%
-  mutate(.,dQ = Q_in - Q_out) %>% cbind(., dV)
+y <- y %>% mutate(.,dQ = Q_in - Q_out) %>% cbind(., dV)
 
-#figure dQ vs dV
+## correlation of dV and dQ
+cor(y$dV, y$dQ, use = "complete.obs")
+## Plotting dV vs dQ
 range_limit <- max(abs(min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE))), 
                    abs(max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE))))
          
@@ -73,81 +70,60 @@ ggplot(y) +
                    ),
                linetype = "dashed"
                )
-
-#correlation
-cor(y$dV, y$dQ, use = "complete.obs")
-
 ###############################################################################################################
 ###############################################################################################################
 ###############################################################################################################
 # Uncertainty Analysis
-R <- 10 # sampling gap/ temporal resolution
-
 N <- rep(NA, R-1)
-dy <- y %>%
-  select(., datetime, dQ, dV)
-mx <- matrix(nrow = nrow(dy))
+dy <- y %>% select(., datetime, dQ, dV)
 
-# y is the results we have 
+## A loop to create a matrix of sampling days in different scenarios
+mx <- matrix(nrow = nrow(dy))
 for (i in 1:R) {
-  # create a sequence of days that are sampled
-  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) # adding R-1 rows of NA of sequence
-  
-  r_NA <- c(rep(NA,i-1), r) # adding NA before the first value from the vector
-  length(r_NA) <- nrow(y) # length correction 
+  ### adding R-1 rows of NA of sequence
+  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) 
+  ### adding NA before the first value from the vector
+  r_NA <- c(rep(NA,i-1), r)
+  ### length correction 
+  length(r_NA) <- nrow(y)
   
   mx <- as.data.frame(cbind(mx, r_NA)); names(mx)[i+1] <- paste0(c("dQ"), i)
 }
-mx <- subset(mx, select = -V1) # dropping defaut column from df
-
-
+### dropping defaut column from df
+mx <- subset(mx, select = -V1) # View(mx)
 ###############################################################################################################
 # joining sampling days (mx) to the dy (here we are testing on t)
-mx <- zoo(mx, dy$datetime) # convert mx to time series object
+## convert mx to time series object
+mx <- zoo(mx, dy$datetime) 
+dy <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
+## adding # of days as a new column
+day <- seq(from = 1, to = nrow(dy)); dy <- cbind(dy, day)  
+dy <- merge(dy, mx)
 
-t <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
-
-
-day <- seq(from = 1, to = nrow(dy)); t <- cbind(t, day)  # adding # of days as a new column
-
-
-t <- merge(t, mx)
-
-# adding values for sampling days in different scenarios
+## adding values for sampling days columns in different scenarios
 for (i in 1:R){
-  
-  for (j in 1:nrow(t)){
-    
-    if (!is.na(t[j, i+3]))
-      t[j, i+3] <- t[j, 1]
-    
+  for (j in 1:nrow(dy)){
+    if (!is.na(dy[j, i+3]))
+      dy[j, i+3] <- dy[j, 1]
   }
 }
 
+## interpolate in substitue of NA values
+dy <- na_interpolation(dy, option = "linear") %>% subset(., select = -day)
 
-# interpolate
-t <- na_interpolation(t, option = "linear") %>%
-  subset(., select = -day)
-
-
-t_error <- t %>%
-  subset(., select = -c(dQ,dV)) %>%
-  fortify.zoo() %>%
-  select(-Index)
+## upper and lower error bars
+dy_error <- dy %>% subset(., select = -c(dQ,dV)) %>% fortify.zoo() %>% select(-Index)
   
-t_error$max <- apply(X = t_error, MARGIN=1, FUN=max)
-t_error$min <- apply(X = t_error, MARGIN=1, FUN=min)
+### calculation highest and lowest values for each scenarios/row
+dy_error$max <- apply(X = dy_error, MARGIN=1, FUN=max)
+dy_error$min <- apply(X = dy_error, MARGIN=1, FUN=min)
 
-t_error <- t_error %>%
-  select(max, min) %>%
-  zoo(., order.by = dy$datetime)
-
-t_2 <- t %>%
-  subset(., select= c(dQ,dV)) %>%
-  merge(., t_error)
-
+### dy_2 
+dy_error <- dy_error %>% select(max, min) %>% zoo(., order.by = y$datetime)
+dy_2 <- dy %>% subset(., select= c(dQ,dV)) %>% merge(., dy_error)
+###############################################################################################################
 # Plot with upper/lower bars
-dygraph(t_2, 
+ dygraph(dy_2, 
         main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
         ylab = "Storage change (km^3 / day)") %>% 
   dyRangeSelector() %>%
@@ -158,12 +134,13 @@ dygraph(t_2,
               hideOnMouseOut = TRUE)
 
 # Plot showing uncertainty as lines
-# dygraph(t, 
-#        main = paste0("Uncertainty Analysis for SWOT Observations (Sampling Gap: ", R, ")"),
-#        ylab = "Storage change (km^3 / day)") %>% 
-#  dyRangeSelector() %>%
-#  dySeries("dV", color = "seagreen") %>%
-#  dySeries("dQ", color = "red") %>%
-#  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) %>%
-#  dyLegend(width = 600) 
-
+ dygraph(dy, 
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries("dV", color = "seagreen") %>% dySeries("dQ", color = "red") %>%
+  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) %>%
+  dyLegend(width = 600) 
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################

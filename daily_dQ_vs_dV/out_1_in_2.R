@@ -3,15 +3,15 @@ library("dplyr")
 library("rio")
 library("tidyverse")
 library("readxl") #read excel files out_1_in_2
+library("xts")
 
-
-s_name <- "Choke Canyon_15_16" # sample name
+s_name <- "Wilson Lake_19_2in" # sample name
 
 #cleaning spreadsheets
 
 ##convert multiple sheets from Excel into one sheet
-y <- excel_sheets("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_78_85.xlsx") %>% 
-  map(~read_xlsx("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/Hubbard Creek Lake_78_85.xlsx",.)) %>%
+y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/", s_name, ".xlsx")) %>% 
+  map(~read_xlsx(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_2/", s_name, ".xlsx"),.)) %>%
   data.frame()
 
 ##tidy data
@@ -166,15 +166,15 @@ t_2 <- t %>%
   merge(., t_error)
 
 # Plot with upper/lower bars
-dygraph(t_2, 
-        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
-        ylab = "Storage change (km^3 / day)") %>% 
-  dyRangeSelector() %>%
-  dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%
-  dySeries("dV", label = "Observed dV", color = "seagreen") %>%
-  dyHighlight(highlightCircleSize = 5, 
-              highlightSeriesBackgroundAlpha = 0.2,
-              hideOnMouseOut = TRUE)
+# dygraph(t_2, 
+#        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, "days)"),
+#        ylab = "Storage change (km^3 / day)") %>% 
+#  dyRangeSelector() %>%
+#  dySeries(c("min", "dQ", "max"), label = "Observed dQ", color = "red") %>%
+#  dySeries("dV", label = "Observed dV", color = "seagreen") %>%
+#  dyHighlight(highlightCircleSize = 5, 
+#              highlightSeriesBackgroundAlpha = 0.2,
+#              hideOnMouseOut = TRUE)
 
 # Plot showing uncertainty as lines
 dygraph(t, 
