@@ -8,13 +8,17 @@ library("xts")
 library("dygraphs")
 library("imputeTS")
 
-s_name <- "Possum Kingdom Lk_09_10"
-R <- 7 # sampling gap / temporal resolution
+s_name <- "West Point lake_13_14_nt"
+R <- 30 # sampling gap / temporal resolution
+et_GRAND_ID <- 1896
+et <- read.table(paste0("C:\\Users\\axin\\OneDrive - Kansas State University\\SWOT_from_Aote\\Supporting data\\ET_candidates\\", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
+start_mon <- which(et$Month == 20121001, arr.ind = TRUE)
+end_mon <- which(et$Month == 20140901, arr.ind = TRUE)
 
+
+# sheet conversion ############################################################################################
 ###############################################################################################################
 ###############################################################################################################
-###############################################################################################################
-# clean spreadsheets
 
 ## convert multiple sheets from Excel into one sheet
 y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")) %>% 
@@ -35,9 +39,10 @@ tidy <- function(s){
 
 y <- tidy(y); #View(y)
 ###############################################################################################################
-# daily dV vs dQ
+###############################################################################################################
+# daily dV vs dQ ##############################################################################################
 ## Unit Conversion
-convert_af_mcm = 1233.48/10.0^6 #convert from Thousand acre feet to million m3
+convert_af_mcm = 1000*1233.48/10.0^6 #convert from Thousand acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
@@ -68,11 +73,10 @@ ggplot(y) +
                    xend = max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE)), 
                    yend = max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE))
                    ),
-               linetype = "dashed"
-               )
+               linetype = "dashed")
 ###############################################################################################################
 ###############################################################################################################
-###############################################################################################################
+# Rescale/Aggregate ###########################################################################################
 # Rescale/Aggregate daily dQ and dV by a time period of R (representing SWOT time scale)
 # dQ in a unit of millin m3/day, dV in a unit of million m3
 
@@ -106,11 +110,11 @@ ggplot(dy) +
                    xend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE)), 
                    yend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE))
                    ),
-              linetype = "dashed"
-              )
+              linetype = "dashed")
+dy_ <- dy
 ###############################################################################################################
 ###############################################################################################################
-###############################################################################################################
+# Uncertainty Analysis ########################################################################################
 # Uncertainty Analysis due to sampling gaps by SWOT
 
 ## A loop to create a matrix (mx) of sampling days in different scenarios
@@ -194,3 +198,40 @@ dy_error$min <- apply(X = dy_error, MARGIN=1, FUN=min)
   dyLegend(width = 600) 
 ###############################################################################################################
 ###############################################################################################################
+# Adding ET ###################################################################################################
+# Adding ET
+
+et_ <- et[start_mon:end_mon,]
+## Unit Conversion
+convert_tcm_mcm = 0.001 #convert from Thousand m3 to million m3
+et_ <- et_ %>%  mutate(., amtTerraClimate = amtTerraClimate*convert_tcm_mcm, amtNLDAS = amtNLDAS*convert_tcm_mcm, amtGLDAS=convert_tcm_mcm*amtGLDAS)
+
+dy_R <- data.frame(dV_R = dy_$dV_R[!is.na(dy_$dV_R)], dQ_R = dy_$dQ_R[!is.na(dy_$dQ_R)]) %>%
+  cbind(., et_) %>%
+  mutate(., dV_ET = dV_R + amtTerraClimate)
+
+## Plot dV vs dQ
+range_limit <- max(abs(min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R,na.rm = TRUE))), 
+                   abs(max(max(dy_R$dV_R,na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE))))
+ggplot(dy_R) +
+  geom_point(mapping = aes(x = dQ_R, y = dV_R), 
+             color="darkgreen", shape= 17, 
+             alpha = 1/2, size = 3, na.rm = TRUE) +
+  labs(title =paste0("Storage-discharge balance for \n", s_name, " \n(Sampling Gap: ", R, " days)"), 
+       x = "dQ (million m^3)", 
+       y = "dV (million m^3)") +
+  xlim(-range_limit, range_limit) +
+  ylim(-range_limit, range_limit) +
+  geom_segment(aes(x = min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R, na.rm = TRUE)), 
+                   y = min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R, na.rm = TRUE)), 
+                   xend = max(max(dy_R$dV_R, na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE)), 
+                   yend = max(max(dy_R$dV_R, na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE))),
+  linetype = "dashed") +
+  geom_point(mapping = aes(x = dQ_R, y = dV_ET), 
+             color="green", shape= 17, 
+             alpha = 1/2, size = 3, na.rm = TRUE) 
+
+
+
+
+  
