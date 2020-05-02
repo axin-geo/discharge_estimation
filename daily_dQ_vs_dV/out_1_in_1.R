@@ -8,12 +8,12 @@ library("xts")
 library("dygraphs")
 library("imputeTS")
 
-s_name <- "West Point lake_13_14_nt"
+s_name <- "Possum Kingdom Lk_09_10"
 R <- 30 # sampling gap / temporal resolution
-et_GRAND_ID <- 1896
+et_GRAND_ID <- 1176
 et <- read.table(paste0("C:\\Users\\axin\\OneDrive - Kansas State University\\SWOT_from_Aote\\Supporting data\\ET_candidates\\", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
-start_mon <- which(et$Month == 20121001, arr.ind = TRUE)
-end_mon <- which(et$Month == 20140901, arr.ind = TRUE)
+start_mon <- which(et$Month == 20081001, arr.ind = TRUE)
+end_mon <- which(et$Month == 20100901, arr.ind = TRUE)
 
 
 # sheet conversion ############################################################################################
@@ -42,7 +42,7 @@ y <- tidy(y); #View(y)
 ###############################################################################################################
 # daily dV vs dQ ##############################################################################################
 ## Unit Conversion
-convert_af_mcm = 1000*1233.48/10.0^6 #convert from Thousand acre feet to million m3
+convert_af_mcm = 1233.48/10.0^6 #convert from Thousand acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 #convert from cubic feet per second to million m3 per day;
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
@@ -202,18 +202,34 @@ dy_error$min <- apply(X = dy_error, MARGIN=1, FUN=min)
 # Adding ET
 
 et_ <- et[start_mon:end_mon,]
-## Unit Conversion
+## Unit Conversion for ET
 convert_tcm_mcm = 0.001 #convert from Thousand m3 to million m3
 et_ <- et_ %>%  mutate(., amtTerraClimate = amtTerraClimate*convert_tcm_mcm, amtNLDAS = amtNLDAS*convert_tcm_mcm, amtGLDAS=convert_tcm_mcm*amtGLDAS)
+et_$ET <- apply(et_[6:8],1 , mean)
+##################################################
+t <- y %>% select(., datetime, dQ, dV) %>%  mutate(., dV_R = NA, dQ_R = NA)
+t <- separate(t, 1, c("yr", "mon", "day"), convert = T)
 
-dy_R <- data.frame(dV_R = dy_$dV_R[!is.na(dy_$dV_R)], dQ_R = dy_$dQ_R[!is.na(dy_$dQ_R)]) %>%
+start_yr <- 2008
+end_yr <- 2010
+### rescale to 30 days
+k <- 1
+for (i in start_yr:end_yr){
+  for (j in min(t[t$yr == i,]$mon):max(t[t$yr == i,]$mon)){
+    t[t$yr== i & t$mon == j,][1,6] <- sum(t$dV[t$yr == i & t$mon == j], na.rm = T)
+    t[t$yr== i & t$mon == j,][1,7] <- sum(t$dQ[t$yr == i & t$mon == j], na.rm = T)
+    k <- k+1
+  }
+}
+
+# plot dV vs dQ
+t_30_na <- data.frame(dV_R = t$dV_R[!is.na(t$dV_R)], dQ_R = t$dQ_R[!is.na(t$dQ_R)]) %>%
   cbind(., et_) %>%
-  mutate(., dV_ET = dV_R + amtTerraClimate)
+  mutate(., dV_ET = dV_R + ET)
 
-## Plot dV vs dQ
-range_limit <- max(abs(min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R,na.rm = TRUE))), 
-                   abs(max(max(dy_R$dV_R,na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE))))
-ggplot(dy_R) +
+range_limit <- max(abs(min(min(t_30_na$dV_R, na.rm = TRUE), min(t_30_na$dQ_R,na.rm = TRUE))), 
+                   abs(max(max(t_30_na$dV_R,na.rm = TRUE), max(t_30_na$dQ_R, na.rm = TRUE))))
+ggplot(t_30_na) +
   geom_point(mapping = aes(x = dQ_R, y = dV_R), 
              color="darkgreen", shape= 17, 
              alpha = 1/2, size = 3, na.rm = TRUE) +
@@ -222,16 +238,37 @@ ggplot(dy_R) +
        y = "dV (million m^3)") +
   xlim(-range_limit, range_limit) +
   ylim(-range_limit, range_limit) +
-  geom_segment(aes(x = min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R, na.rm = TRUE)), 
-                   y = min(min(dy_R$dV_R, na.rm = TRUE), min(dy_R$dQ_R, na.rm = TRUE)), 
-                   xend = max(max(dy_R$dV_R, na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE)), 
-                   yend = max(max(dy_R$dV_R, na.rm = TRUE), max(dy_R$dQ_R, na.rm = TRUE))),
-  linetype = "dashed") +
+  geom_segment(aes(x = min(min(t_30_na$dV_R, na.rm = TRUE), min(t_30_na$dQ_R, na.rm = TRUE)), 
+                   y = min(min(t_30_na$dV_R, na.rm = TRUE), min(t_30_na$dQ_R, na.rm = TRUE)), 
+                   xend = max(max(t_30_na$dV_R, na.rm = TRUE), max(t_30_na$dQ_R, na.rm = TRUE)), 
+                   yend = max(max(t_30_na$dV_R, na.rm = TRUE), max(t_30_na$dQ_R, na.rm = TRUE))),
+               linetype = "dashed") +
   geom_point(mapping = aes(x = dQ_R, y = dV_ET), 
              color="green", shape= 17, 
              alpha = 1/2, size = 3, na.rm = TRUE) 
 
 
+###  Plot ts
+et_$Month <- as.Date(strptime(et_$Month, "%Y%m%d"))
+et_ <- xts(et_, order.by = et_$Month)
+
+t <- t %>% unite("datetime", c("yr","mon", "day"), sep = "-"); t$datetime <- as.Date(t$datetime)
+t <- zoo(t, order.by = t$datetime)
+t <- merge(t, et_$ET) %>% subset(., select = -c(datetime))
 
 
-  
+
+
+
+t$dV_R <- na_interpolation(as.numeric(t[,1]), option = "linear")
+t$dQ_R <- na_interpolation(as.numeric(t[,2]), option = "linear")
+# Plot ts
+dygraph(t, 
+        main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: monthly)"),
+        ylab = "Storage change (km^3 / day)") %>% 
+  dyRangeSelector() %>%
+  dySeries("dV_R", color = "seagreen",strokeWidth = 1) %>% dySeries("dQ_R", color = "red",strokeWidth = 1) %>%
+  dyLegend(width = 600) 
+dygraph(t)
+
+plot(t)
