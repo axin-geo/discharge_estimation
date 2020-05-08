@@ -1,12 +1,6 @@
 # installing and loading packages
 # install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
-library("dplyr")
-library("rio")
-library("tidyverse")
-library("readxl")
-library("xts")
-library("dygraphs")
-library("imputeTS")
+library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS")
 
 s_name <- "Possum Kingdom Lk_09_10"
 R <- 10 # sampling gap / temporal resolution
