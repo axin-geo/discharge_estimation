@@ -1,14 +1,12 @@
 # installing and loading packages
 # install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
-library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS")
+library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS");library("ggplot2")
 
 s_name <- "Possum Kingdom Lk_09_10"
 R <- 10 # sampling gap / temporal resolution
-et_GRAND_ID <- 1176
-et <- read.table(paste0("C:\\Users\\axin\\OneDrive - Kansas State University\\SWOT_from_Aote\\Supporting data\\ET_candidates\\", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
-start_mon <- which(et$Month == 20081001, arr.ind = TRUE)
-end_mon <- which(et$Month == 20100901, arr.ind = TRUE)
-start_yr <- 2008; end_yr <- 2010 # move to the top
+et_GRAND_ID <- 1176; et <- read.table(paste0("C:\\Users\\axin\\OneDrive - Kansas State University\\SWOT_from_Aote\\Supporting data\\ET_candidates\\", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
+start_mon <- which(et$Month == 20081001, arr.ind = TRUE); end_mon <- which(et$Month == 20100901, arr.ind = TRUE)
+start_yr <- 2008; end_yr <- 2010 
 
 # sheet conversion ############################################################################################
 ###############################################################################################################
@@ -99,13 +97,12 @@ for (i in 1:(nrow(dy)%/%R)){dy$dV_et_R[R*i+1] <- sum(dy$dV_et[(2+i*R-R):(i*R+1)]
 
 ## Plotting dQ_R vs dV_R & dV_et_R
 range_limit <- max(abs(min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE))), abs(max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE))))
-ggplot(dy) +
-  geom_point(mapping = aes(x = dQ_R, y = dV_R), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
+ggplot(dy, aes(dQ_R, dV_R, dV_et_R)) +
+  geom_point(mapping = aes(x = dQ_R, y = dV_R), color="darkgreen", shape= 17, alpha = 1/2, size = 2, na.rm = TRUE) +
+  geom_segment(aes(x = min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE)), y = min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE)), xend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE)), yend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE))),linetype = "dashed") +
+  geom_point(mapping = aes(x = dQ_R, y = dV_et_R), color="red", shape= 17, alpha = 1/2, size = 2, na.rm = TRUE) +
   labs(title =paste0("Storage-discharge balance for \n", s_name, " \n(Sampling Gap: ", R, " days)"), x = "dQ (million m^3)", y = "dV (million m^3)") +
-  xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit) +
-  geom_segment(aes(x = min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE)), y = min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE)), xend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE)), yend = max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE))),
-              linetype = "dashed") +
-  geom_point(mapping = aes(x = dQ_R, y = dV_et_R), color="green", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) 
+  xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit)
 
 dV_et_R <- data.frame(datetime = y$datetime, dV_et_R = dy$dV_et_R) %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
 
