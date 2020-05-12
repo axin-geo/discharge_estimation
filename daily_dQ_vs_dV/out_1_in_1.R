@@ -1,6 +1,12 @@
+#  Testing the water balance between reservoirs and their connected rivers at a SWOT's operating time scale
+#
+# [NOTES: THESE CODES WERE DEVELOPED FOR 'TESTING A PROPOSED ALGORITHM FOR ESTIMATING WATER DISCHARGE
+#  AT RIVER-RESERVOIR INTERFACE: POTENTIAL APPLICATIONS FOR THE SURFACE WATER AND OCEAN TOPOGRAPHY SATELLITE MISSION' PROJECT]
+#  BY AOTE XIN, 05/12/2020
+
 # installing and loading packages
 # install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
-library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS");library("ggplot2")
+library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS");library("ggplot2");library("zoo")
 
 s_name <- "Possum Kingdom Lk_09_10"
 R <- 10 # sampling gap / temporal resolution
@@ -18,7 +24,6 @@ y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_
 
 ## tidy data
 n = c("V", "Q_out", "Q_in"); m = c("site_V", "site_out", "site_in")
-
 tidy <- function(s){ 
   s <- s %>% select(., datetime, contains("site_no"), ends_with(c("32400","30800","30600")), contains("00003"),-contains("cd")) %>%
              filter(., site_no != "15s") %>% rename_at(vars(c(5,6,7)), ~ n) %>% rename_at(vars(contains("site")), ~ m) 
@@ -89,11 +94,14 @@ N <- rep(NA, R-1)
 dy <- y %>% select(., datetime, dQ, dV) %>% left_join(., et_day) %>% mutate(., dV_et =  dV + ET, dV_R = NA, dQ_R = NA, dV_et_R = NA) 
 
 ## dV_R == V(R*(n+1))-V(R*n)
-for (i in 1:(nrow(dy)%/%R)){dy$dV_R[R*i+1] <- sum(dy$dV[(2+i*R-R):(i*R+1)], na.rm = T)}
+i <- 1
+while (i * R < nrow(dy)){dy$dV_R[R*i+1] <- sum(dy$dV[(2+i*R-R):(i*R+1)], na.rm = T); i <- i+1}
 ## dQ_R
-for (i in 1:(nrow(dy)%/%R)){dy$dQ_R[R*i+1] <- sum(dy$dQ[(2+i*R-R):(i*R+1)], na.rm = T)}
+i <- 1
+while (i * R < nrow(dy)){dy$dQ_R[R*i+1] <- sum(dy$dQ[(2+i*R-R):(i*R+1)], na.rm = T); i <- i+1}
 ## dV_et_R
-for (i in 1:(nrow(dy)%/%R)){dy$dV_et_R[R*i+1] <- sum(dy$dV_et[(2+i*R-R):(i*R+1)], na.rm = T)}
+i <- 1
+while (i * R < nrow(dy)){dy$dV_et_R[R*i+1] <- sum(dy$dV_et[(2+i*R-R):(i*R+1)], na.rm = T); i <- i+1}
 
 ## Plotting dQ_R vs dV_R & dV_et_R
 range_limit <- max(abs(min(min(dy$dV_R, na.rm = TRUE), min(dy$dQ_R, na.rm = TRUE))), abs(max(max(dy$dV_R, na.rm = TRUE), max(dy$dQ_R, na.rm = TRUE))))
