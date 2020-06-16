@@ -6,22 +6,22 @@
 # installing and loading packages that are used in the following script
 # install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
 library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS");library("ggplot2");library("zoo")
-
+library("grid") # used for adding annotation in ggplot
 
 
 # Read and convert raw data
 # Here we will read the long-term monthly evaportranspiration data developed by Dr. Gao Huilin for Possum Kingdom lake
 s_name <- "Possum Kingdom Lk_09_10"
 R <- 11 # sampling gap / temporal resolution
-et_GRAND_ID <- 1176; et <- read.table(paste0("C:\\Users\\axin\\OneDrive - Kansas State University\\SWOT_from_Aote\\Supporting data\\ET\\Reservoir_evaporation721\\", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
+et_GRAND_ID <- 1176; et <- read.table(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/Supporting data/ET/Reservoir_evaporation721/", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
 start_mon <- which(et$Month == 20081001, arr.ind = TRUE); end_mon <- which(et$Month == 20100901, arr.ind = TRUE)
 start_yr <- 2008; end_yr <- 2010 
 
 head(et, 6)
 
 # In the next chunk, the in situ data are read which includes the discharge measurements for inflow and outflow rivers and reservoir storage measurements all at a daily basis. Data acquired from USGS NWIS.
-y <- excel_sheets(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")) %>% 
-  map(~read_xlsx(paste0("C:/Users/axin/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx"),.)) %>% ## convert multiple sheets from Excel into one sheet
+y <- excel_sheets(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")) %>% 
+  map(~read_xlsx(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx"),.)) %>% ## convert multiple sheets from Excel into one sheet
   data.frame()
 
 # tidy data
@@ -141,7 +141,7 @@ ggplot(dy) +
   xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit) +
   stat_smooth(aes(dy$dQ_R, dy$dV_et_R), method = "lm", col = "red", se = FALSE)
 
-dV_et_R <- data.frame(datetime = y$datetime, dV_et_R = dy$dV_et_R) %>% xts(., order.by = .$datetime) %>% subset(., select = -datetime)
+dy_R <- dy %>% xts(., order.by = .$datetime) %>% subset(., select = -c(datetime, dQ, dV))
 
 
 
@@ -195,11 +195,18 @@ for (i in 1:R){
   }
 }
 
+dy_R <- dy %>%
+  subset(., select = -c(dV_R, dQ_R)) %>%
+  merge(., dy_R)
+
+
+# plot the hydrograph
+
 # interpolate the volume variation from discharge difference
 # Here according to our assumption, the daily volume of discharge take on a linear variation
 dy <- na_interpolation(dy, option = "linear") %>% merge(., dV_et_R)
 
-###############################################################################################################
+
 ## upper and lower error bars
 #dy_error <- dy %>% subset(., select = -c(dQ_R,dV_R,dV_et_R)) %>% fortify.zoo() %>% select(-Index)
   
@@ -225,40 +232,114 @@ dy <- na_interpolation(dy, option = "linear") %>% merge(., dV_et_R)
   dySeries("dV_et_R", color = "green", drawPoints = TRUE, pointShape = "triangle", pointSize = "3", label = "dV corrected by reservoir evaporation") %>% 
   dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) 
  
-#Daily to Monthly data Manipulation############################################################################
-###############################################################################################################
-#rescale in situ discharge and storage data from daily to monthly 
-dy_mon <- y %>% select(., datetime, dQ, dV) %>%  mutate(., dV_R = NA, dQ_R = NA); dy_mon <- separate(dy_mon, 1, c("yr", "mon", "day"), convert = T)
+
+
+# Daily to Monthly data Manipulation
+# rescale in situ discharge and storage data from daily to monthly 
+#dy_mon <- y %>% select(., datetime, dQ, dV) %>%  mutate(., dV_R = NA, dQ_R = NA); dy_mon <- separate(dy_mon, 1, c("yr", "mon", "day"), convert = T)
  
-for (i in start_yr:end_yr){
- for (j in min(dy_mon[dy_mon$yr == i,]$mon):max(dy_mon[dy_mon$yr == i,]$mon)){
-    dy_mon[dy_mon$yr== i & dy_mon$mon == j,][1,6] <- sum(dy_mon$dV[dy_mon$yr == i & dy_mon$mon == j], na.rm = T)
-    dy_mon[dy_mon$yr== i & dy_mon$mon == j,][1,7] <- sum(dy_mon$dQ[dy_mon$yr == i & dy_mon$mon == j], na.rm = T)
-  }}
+#for (i in start_yr:end_yr){
+# for (j in min(dy_mon[dy_mon$yr == i,]$mon):max(dy_mon[dy_mon$yr == i,]$mon)){
+#    dy_mon[dy_mon$yr== i & dy_mon$mon == j,][1,6] <- sum(dy_mon$dV[dy_mon$yr == i & dy_mon$mon == j], na.rm = T)
+#    dy_mon[dy_mon$yr== i & dy_mon$mon == j,][1,7] <- sum(dy_mon$dQ[dy_mon$yr == i & dy_mon$mon == j], na.rm = T)
+#  }}
 
-dy_mon <- dy_mon %>% unite("datetime", c("yr","mon", "day"), sep = "-"); dy_mon$datetime <- as.Date(dy_mon$datetime)
+#dy_mon <- dy_mon %>% unite("datetime", c("yr","mon", "day"), sep = "-"); dy_mon$datetime <- as.Date(dy_mon$datetime)
 
 
-dy_mon <- left_join(dy_mon, et_mon, by = c("datetime"="Month")) %>% mutate(., dV_et_R = dV_R + ET)
-dV_et_mon <- data.frame(dV_et_R = dy_mon$dV_et_R) 
+#dy_mon <- left_join(dy_mon, et_mon, by = c("datetime"="Month")) %>% mutate(., dV_et_R = dV_R + ET)
+#dV_et_mon <- data.frame(dV_et_R = dy_mon$dV_et_R) 
 
 # Plot dV vs dQ
-range_limit <- max(abs(min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R,na.rm = TRUE))), abs(max(max(dy_mon$dV_R,na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE))))
-ggplot(dy_mon) +
-  geom_point(mapping = aes(x = dQ_R, y = dV_R), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
-  labs(title =paste0("Storage-discharge balance for \n", s_name, " \n(Sampling Gap: monthly)"), x = "dQ (million m^3)", y = "dV (million m^3)") +
-  xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit) +
-  geom_segment(aes(x = min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R, na.rm = TRUE)), y = min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R, na.rm = TRUE)), xend = max(max(dy_mon$dV_R, na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE)), yend = max(max(dy_mon$dV_R, na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE))),linetype = "dashed") +
-  geom_point(mapping = aes(x = dQ_R, y = dV_et_R), color="green", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE)
+#range_limit <- max(abs(min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R,na.rm = TRUE))), abs(max(max(dy_mon$dV_R,na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE))))
+#ggplot(dy_mon) +
+#  geom_point(mapping = aes(x = dQ_R, y = dV_R), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
+#  labs(title =paste0("Storage-discharge balance for \n", s_name, " \n(Sampling Gap: monthly)"), x = "dQ (million m^3)", y = "dV (million m^3)") +
+#  xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit) +
+#  geom_segment(aes(x = min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R, na.rm = TRUE)), y = min(min(dy_mon$dV_R, na.rm = TRUE), min(dy_mon$dQ_R, na.rm = TRUE)), xend = max(max(dy_mon$dV_R, na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE)), yend = max(max(dy_mon$dV_R, na.rm = TRUE), max(dy_mon$dQ_R, na.rm = TRUE))),linetype = "dashed") +
+#  geom_point(mapping = aes(x = dQ_R, y = dV_et_R), color="green", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE)
 
 ### Plot hydrograph
-dy_mon <- dy_mon %>% select(., -c(dQ, dV, ET, dV_et_R)) %>% na_interpolation(., option = "linear") 
-xx <- xts(dy_mon[,1], order.by = dy_mon$datetime); xx <- cbind(xx, dy_mon$dV_R,dy_mon$dQ_R, dV_et_mon$dV_et_R) %>% subset(., select = -xx); colnames(xx) <- c("dV_R", "dQ_R", "dV_et_R")
-dygraph(xx, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: monthly)"), ylab = "Storage change (km^3 / day)") %>% 
-  dyRangeSelector() %>% dyLegend(width = 600) %>% 
-  dySeries("dV_R", color = "seagreen",strokeWidth = 1) %>% dySeries("dQ_R", color = "red",strokeWidth = 1) %>% dySeries("dV_et_R", color = "green", pointShape = "triangle", pointSize = "3") 
-###############################################################################################################
+#dy_mon <- dy_mon %>% select(., -c(dQ, dV, ET, dV_et_R)) %>% na_interpolation(., option = "linear") 
+#xx <- xts(dy_mon[,1], order.by = dy_mon$datetime); xx <- cbind(xx, dy_mon$dV_R,dy_mon$dQ_R, dV_et_mon$dV_et_R) %>% subset(., select = -xx); colnames(xx) <- c("dV_R", "dQ_R", "dV_et_R")
+#dygraph(xx, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: monthly)"), ylab = "Storage change (km^3 / day)") %>% 
+#  dyRangeSelector() %>% dyLegend(width = 600) %>% 
+#  dySeries("dV_R", color = "seagreen",strokeWidth = 1) %>% dySeries("dQ_R", color = "red",strokeWidth = 1) %>% dySeries("dV_et_R", color = "green", pointShape = "triangle", pointSize = "3") 
+
+
 
 # --------------------------------------------------------
 # JW: next step, calculate error statistics for different temporal aggregation scales. 
 # --------------------------------------------------------
+
+# Error due to samping gaps, dQ_R vs. dQ (1:11)
+dy.t <- fortify.zoo(dy) 
+dy.long <- dy.t %>%
+  select(., 3:(3+R)) %>%
+  pivot_longer(-dQ_R, names_to = "variable", values_to = "value") 
+
+# bias, sd, rrmse
+rr_gap <- (dy.long$dQ_R - dy.long$value)/dy.long$value
+b_gap <- mean(rr_gap)
+sd_gap <- sd(rr_gap)
+rrmse_gap <- sqrt(b_gap^2 + sd_gap^2)
+b_gap; sd_gap; rrmse_gap
+
+# plot
+# Create a text
+anno <- paste0("MRR:",round(b_gap, 3), "\nSDRR:", round(sd_gap, 3),"\nrRMSE:", round(rrmse_gap, 3))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
+                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+range_limit <- max(max(abs(range(dy.long$dQ_R))), max(abs(range(dy.long$value))))
+ggplot(dy.long, aes(value, dQ_R, colour = variable)) + geom_point()+ xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
+ggplot(dy.long, aes(value, dQ_R)) + geom_point()+ xlab("dQ (1:11)") + xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
+
+
+
+
+# Physical error dV_R vs. dQ (1:11) 
+
+# w/o ET loss
+dy.long_p <- dy.t %>%
+  select(., c(2, 4:(3+R))) %>%
+  pivot_longer(-dV_R, names_to = "variable", values_to = "value") %>%
+  filter(dV_R != dy.t[1,2])
+
+# bias, sd, rrmse
+rr_p <- (dy.long_p$dV_R - dy.long_p$value)/dy.long_p$value
+b_p <- mean(rr_p)
+sd_p <- sd(rr_p)
+rrmse_p <- sqrt(b_p^2 + sd_p^2)
+b_p; sd_p; rrmse_p
+
+# plot
+# Create a text
+anno <- paste0("MRR:",round(b_p, 3), "\nSDRR:", round(sd_p, 3),"\nrRMSE:", round(rrmse_p, 3))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
+                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+ggplot(dy.long_p, aes(value, dV_R, colour = variable)) + geom_point() + xlab("dQ (1:11)") + xlim(-50,50) + ylim(-50,50) + annotation_custom(grob)
+
+
+# w/ ET loss
+dy.long_t <- na.interpolation(dy.t)
+dy.long_p_et <- dy.t %>%
+  na.interpolation(.,) %>%
+  select(., c(4:(4+R))) %>%
+  pivot_longer(-dV_et_R, names_to = "variable", values_to = "value")
+
+# bias, sd, rrmse
+rr_p_et <- (dy.long_p_et$dV_et_R - dy.long_p_et$value)/dy.long_p_et$value
+b_p_et <- mean(rr_p_et)
+sd_p_et <- sd(rr_p_et)
+rrmse_p_et <- sqrt(b_p_et^2 + sd_p_et^2)
+b_p_et; sd_p_et; rrmse_p_et
+
+# plot
+# Create a text
+anno <- paste0("MRR:",round(b_p_et, 3), "\nSDRR:", round(sd_p_et, 3),"\nrRMSE:", round(rrmse_p_et, 3))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
+                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+ggplot(dy.long_p_et, aes(value, dV_et_R, colour = variable)) + geom_point() + xlab("dQ (1:11)")+ xlim(-50,50) + ylim(-50,50) + annotation_custom(grob)
