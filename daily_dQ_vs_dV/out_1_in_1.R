@@ -1,15 +1,23 @@
-# Code from Aote Xin, up to June 8, 2020
+# Code from Aote Xin, up to July 11, 2020
 # SWOT reservoir-river mass balance
 
 # [NOTES: THESE CODES WERE DEVELOPED FOR 'TESTING A PROPOSED ALGORITHM FOR ESTIMATING WATER DISCHARGE AT RIVER-RESERVOIR INTERFACE: POTENTIAL APPLICATIONS FOR THE SURFACE WATER AND OCEAN TOPOGRAPHY SATELLITE MISSION' PROJECT]
 
 # installing and loading packages that are used in the following script
 # install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
-library("dplyr");library("rio");library("tidyverse");library("readxl");library("xts");library("dygraphs");library("imputeTS");library("ggplot2");library("zoo")
-library("grid") # used for adding annotation in ggplot
+library("rio"); # Import, Export, and Convert Data Files
+library("tidyverse"); # for common data minipulation(dplyr), plotting(ggplot2)
+library("readxl"); # for reading excel files
+library("xts"); # for time-series data object; an extension of ZOO package
+library("dygraphs"); # plotting package for time-series objects
+library("imputeTS"); # Time Series Missing Value Imputation
+library("zoo") # for time-series data object
+library("grid") # for adding annotation in ggplot
 
+#############################
+# Read and convert raw data #
+#############################
 
-# Read and convert raw data
 # Here we will read the long-term monthly evaportranspiration data developed by Dr. Gao Huilin for Possum Kingdom lake
 s_name <- "Possum Kingdom Lk_09_10"
 R <- 11 # sampling gap / temporal resolution
@@ -38,8 +46,10 @@ tidy <- function(s){
 y <- tidy(y); head(y, 6)
 
 
+###################################
+# Derive and plot daily dV and dQ #
+###################################
 
-# Derive and plot daily dV and dQ
 # Unit Conversion
 convert_af_mcm = 1233.48/10.0^6 ## convert from Thousand acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 ## convert from cubic feet per second to million m3 per day;
@@ -52,7 +62,7 @@ dV <- y$V %>% append(.,NA, 0); length(dV) <- nrow(y); dV <- y$V - dV
 y <- y %>% mutate(.,dQ = Q_in - Q_out) %>% cbind(., dV)
 
 # correlation of dV and dQ
-cor(y$dV, y$dQ, use = "complete.obs")
+correlation <- cor(y$dV, y$dQ, use = "complete.obs")
 
 # Plot dV vs dQ
 range_limit <- max(abs(min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE))), 
@@ -62,13 +72,15 @@ ggplot(y) +
   geom_point(mapping = aes(x = dQ, y = dV), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
   labs(title ="Daily dQ vs dV", x = "dQ (m^3)", y = "dV (m^3)") +
   xlim(-range_limit, range_limit) +  ylim(-range_limit, range_limit) +
-  geom_segment(aes(x = min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE)),  y = min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE)), xend = max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE)), yend = max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE))),
+  geom_segment(aes(x = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)),  y = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)), xend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE)), yend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE))),
                linetype = "dashed")
 
 
+####################
+# Rescale: ET data #
+####################
 
-# Rescale: ET data
-# This code chunk rescales the monthly average ET data to a time scale of daily.
+# This code chunk rescales the monthly average ET data to a daily time scale.
 head(et, 6)
 
 # current unit million m3/month to million m3/day
@@ -77,13 +89,14 @@ et_mon <- et[start_mon:end_mon,]
 
 # Unit Conversion for ET
 convert_tcm_mcm = 0.001 ## convert from Thousand m3/month to million m3/month
-et_mon$ET <- apply(et_mon[6:8],1 , mean)
+et_mon$ET <- apply(et_mon[,6:8], 1, mean)
 et_mon <- et_mon %>%  select(., -c(2:8)) %>% mutate(., ET = ET*convert_tcm_mcm)
 et_mon$Month <- as.Date(strptime(et_mon$Month, "%Y%m%d"))
 
 et_day <- left_join(y, et_mon, by = c("datetime" = "Month")) %>% select(c("datetime","ET"))
 et_day <- separate(et_day, 1, c("yr", "mon", "day"), convert = T)
 
+# A loop converting monthly ET data to daily ET data based on an assumption that ET remains unchanged every day for each month
 for (i in start_yr:end_yr){
   for (j in min(et_day[et_day$yr == i,]$mon):max(et_day[et_day$yr == i,]$mon)){
     ET_daily <- et_day[et_day$yr == i & et_day$mon == j,][1,4]/nrow(et_day[et_day$yr == i & et_day$mon == j,])
@@ -92,41 +105,156 @@ for (i in start_yr:end_yr){
     }
   }
 }
+
 et_day <- et_day %>% unite("datetime", c("yr","mon", "day"), sep = "-"); et_day$datetime <- as.Date(et_day$datetime)
 head(et_day, 6)
 
 
+#########################
+# Rescale: in situ data #
+#########################
 
-# Rescale: in situ data
-
-# This code chunk rescales daily dQ, V/dV and dV added up with daily ET derived from previous codes by a time period of R (representing SWOT time scale)
-# Using daily V and V_et rather than daily dV to calculate rescaled dV and V_et (in case some daily dV has missing in situ observations)
-# Using dQ to calculate rescaled dQ
+# This code chunk rescales daily discharge difference and storage variation derived from previous codes by a time period of R (a variable representing SWOT time scale)
+# Note: Using daily V and V_et rather than daily dV to calculate rescaled dV and V_et (in case some daily dV has missing in situ observations)
 # Note: dQ in a unit of millin m3/day, dV in a unit of million m3
 
-dy <- y %>% select(., datetime, dQ, dV, V) %>% left_join(., et_day) %>% mutate(., dQ_R = NA,V_R = NA, dV_R = NA, V_et = V + ET, V_et_R = NA, dV_et_R = NA) 
+# Define a function 'mx' that returns a matrix simulating sampling scenarios. ***Required input: 'colname_mx' as column names in the returned matrix
+mx <- function(colname_mx){
+  mx <- matrix(nrow = nrow(y));
+  for (i in 1:R) {
+    ## adding R-1 rows of NA of sequence
+    r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R - 1)); 
+    ## adding i-1 of NA before the first value of the vector
+    r_NA <- c(rep(NA, i - 1), r);
+    ## length correction 
+    length(r_NA) <- nrow(y);
+    
+    mx <- as.data.frame(cbind(mx, r_NA)); 
+    names(mx)[i + 1] <- paste0(c(colname_mx), i)
+  }
+  
+  # drop defaut column from df
+  mx <- subset(mx, select = -V1); 
+  
+  return(mx) 
+}
+
+###################################
+# Rescale: discharge data ('Q_est')
+Q <- y %>% select(., datetime, dQ) 
+
+# A matrix object simulating sampling scenarios
+Q_est <- mx('Q')
+
+Q_est <- cbind(Q, Q_est)
+
+# Aggregate daily discharge difference to volumeric unit
+# NOTE: dQ in a unit of millin m3/day, Q in a unit of million m3
+for (i in 1:R){
+  for (j in 1:((nrow(Q_est) - i) %/% R)){
+    a <- R*(j - 1) + i + 1; b <- j*R + i;
+    
+    if(j == 1){
+      Q_est[i, i + 2] <- sum(Q_est[, 2][1:i]);
+      Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
+      Q_est[,i + 2][a:(b - 1)] <- NA;
+      } 
+    else{
+      Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
+      Q_est[,i + 2][a:(b - 1)] <- NA;
+      }
+  }
+}
+
+#################################
+# Rescale: storage data ('V_obs' and 'V_et_obs')
+V <- y %>% select(., datetime, dV, V) %>% left_join(., et_day)
+
+# A matrix object simulating sampling scenarios
+V_obs <- mx('V')
+
+V_obs <- V %>% select(., -ET) %>% cbind(., V_obs)
+
+# Assignment of storage observations in different sampling scenarios
+
+# Calculate the storage variation in different sampling scenarios
+
+# Aggregate daily discharge difference to volumeric unit
+# NOTE: dQ in a unit of millin m3/day, Q in a unit of million m3
+for (i in 1:R){
+  for (j in 1:((nrow(Q_est) - i) %/% R)){
+    a <- R*(j - 1) + i + 1; b <- j*R + i;
+    
+    if(j == 1){
+      Q_est[i, i + 2] <- sum(Q_est[, 2][1:i]);
+      Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
+      Q_est[,i + 2][a:(b - 1)] <- NA;
+    } 
+    else{
+      Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
+      Q_est[,i + 2][a:(b - 1)] <- NA;
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+dy <- y %>% select(., datetime, dQ, dV, V) %>% left_join(., et_day) %>% mutate(., V_R = NA, dV_R = NA, V_et = V + ET, V_et_R = NA, dV_et_R = NA) 
 head(dy,15)
 
-# dQ_R
-i <- 1;while (i * R < nrow(dy)){dy$dQ_R[R*i+1] <- sum(dy$dQ[(2+i*R-R):(i*R+1)], na.rm = T); i <- i+1}
+# dQ_R (when i = 1, 12<-[2:12])
+#i <- 1; 
+#while (i*R < nrow(dy)){
+#  dy$dQ_R[R*i + 1] <- sum(dy$dQ[(2 + i*R - R):(i*R + 1)], na.rm = T); 
+#  i <- i + 1
+#  }
 
-# V_R (Storage measurement every R days)
-dy$V_R[1] <- dy$V[1];for (i in 2:(nrow(dy)-1)){
-  if(i %% R == 0) dy$V_R[i+1] <- dy$V[i+1]}
+# V_R (Observation of storage every R days)
+dy$V_R[1] <- dy$V[1]; 
+for (i in 2:(nrow(dy) - 1)){
+  if(i %% R == 0) 
+    dy$V_R[i + 1] <- dy$V[i + 1]
+  }
 
-# dV_R (Storage difference every R days)
-i <- 1;
-while (i*R < nrow(dy)){dy$dV_R[i*R + 1] <- (dy$V_R[i*R +1] - dy$V_R[(i-1)*R + 1]); i <- i + 1}
+# dV_R (Storage variation every R days)
+i <- 1; 
+while (i*R < nrow(dy)){
+  dy$dV_R[i*R + 1] <- (dy$V_R[i*R + 1] - dy$V_R[(i - 1)*R + 1]); 
+  i <- i + 1
+  }
 
-# V_et_R
-dy$V_et_R[1] <- dy$V_et[1]
-for (i in 2:(nrow(dy)-1)){if(i %% R == 0) dy$V_et_R[i+1] <- dy$V_et[i+1]}
+# V_et_R ((Observation of storage added with ET every R days))
+dy$V_et_R[1] <- dy$V_et[1];
+for (i in 2:(nrow(dy) - 1)){
+  if(i %% R == 0) 
+    dy$V_et_R[i + 1] <- dy$V_et[i + 1]
+  }
 
 # dV_et_R
-i <- 1;while (i*R < nrow(dy)){dy$dV_et_R[i*R + 1] <- (dy$V_et_R[i*R +1] - dy$V_et_R[(i-1)*R + 1]); i <- i + 1}
+i <- 1;
+while (i*R < nrow(dy)){
+  dy$dV_et_R[i*R + 1] <- (dy$V_et_R[i*R + 1] - dy$V_et_R[(i - 1)*R + 1]); 
+  i <- i + 1
+  }
 
+# Q1:QR (Estimated discharge difference derived from daily discharge difference)
+## Binding 'mx_est' to 'dy'
+dy <- dy %>% select(-c())
+dy <- cbind(dy, mx_est)
+
+# deleting columns with daily observations
 dy <- dy %>%
-  select(datetime, dQ, dV, dV_R, dQ_R, dV_et_R)
+  select(datetime, dQ, dV, dQ_R, dV_R, dV_et_R)
 
 head(dy,20)
 head(y)
@@ -141,30 +269,34 @@ ggplot(dy) +
   xlim(-range_limit, range_limit) + ylim(-range_limit, range_limit) +
   stat_smooth(aes(dy$dQ_R, dy$dV_et_R), method = "lm", col = "red", se = FALSE)
 
+# Create a dataframe object 'dy_R' with observations at a R-day timescale
 dy_R <- dy %>% xts(., order.by = .$datetime) %>% subset(., select = -c(datetime, dQ, dV))
 
 
+#############################################
+# Uncertainty analysis due to sampling gaps #
+#############################################
 
-# Uncertainty analysis due to sampling gaps
 # A loop to create a matrix (mx) of sampling days in different scenarios
-mx <- matrix(nrow = nrow(dy))
+mx <- matrix(nrow = nrow(dy));
 for (i in 1:R) {
   ## adding R-1 rows of NA of sequence
-  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R-1)) 
-  ## adding NA before the first value from the vector
-  r_NA <- c(rep(NA,i-1), r)
+  r <- rbind(seq(from = i, to = nrow(y), by = R), matrix(ncol = length(seq(from = i, to = nrow(y), by = R)), nrow = R - 1)); 
+  ## adding i-1 of NA before the first value of the vector
+  r_NA <- c(rep(NA, i - 1), r);
   ## length correction 
-  length(r_NA) <- nrow(y)
+  length(r_NA) <- nrow(y);
   
-  mx <- as.data.frame(cbind(mx, r_NA)); names(mx)[i+1] <- paste0(c("dQ"), i)
+  mx <- as.data.frame(cbind(mx, r_NA)); 
+  names(mx)[i + 1] <- paste0(c("dQ"), i)
 }
 
 # drop defaut column from df
-mx <- subset(mx, select = -V1) # View(mx)
+mx <- subset(mx, select = -V1) 
 
 # convert mx to time series object
 mx <- zoo(mx, dy$datetime) 
-dy <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -c(datetime,dV_et_R))
+dy <- dy  %>% xts(., order.by = .$datetime) %>% subset(., select = -c(datetime, dV_et_R))
 
 # add number of days as a new column
 day <- seq(from = 1, to = nrow(dy)); dy <- cbind(dy, day)  
@@ -172,17 +304,21 @@ day <- seq(from = 1, to = nrow(dy)); dy <- cbind(dy, day)
 # join indices of sampling days (mx) to dy 
 dy <- merge(dy, mx)
 
-# Due to sampling gaps, dQ is remotely measured every R days by SWOT.
-# Here we simulate the effects of sampling gaps and assume dQ on days without measurements takes on a linear distribution btw sampling days.
-# add dQ to sampling days
+###############################################################
+# Unit conversion of discharge difference from flow to volume #
+###############################################################
+
+# Due to sampling gaps, discharge difference can only be calculated every R days by SWOT.
+# Here we simulate the effects of sampling gaps and assume discharge difference on days without measurements takes on a linear distribution btw sampling days.
+
+# Assign discharge difference values in previously derived sequences of R scenarios
 for (i in 1:R){
   for (j in 1:nrow(dy)){
-    if (!is.na(dy[j, i+5]))
-      dy[j, i+5] <- dy[j, 1]
+    if (!is.na(dy[j, i + 5]))
+      dy[j, i + 5] <- dy[j, 1]
   }}
 
-# Interpolate the discharge differences dQ on days without measurements (linear)
-# Assume the daily volumes of discharge take on a linear variation
+# Linearly interpolate the discharge differences on days without measurements
 dy <- na_interpolation(dy, option = "linear") %>% subset(., select = -c(day,dQ,dV))
 
 # Aggregate daily dQ and dV by a time period of R (representing SWOT time scale)
@@ -195,9 +331,10 @@ for (i in 1:R){
   }
 }
 
-dy_R <- dy %>%
-  subset(., select = -c(dV_R, dQ_R)) %>%
-  merge(., dy_R)
+
+# unify the time steps for discharge simulation with #R scenarios
+QR <- dy %>%
+  subset(., select = -c(dV_R, dQ_R))
 
 
 # plot the hydrograph
@@ -271,7 +408,10 @@ dy <- na_interpolation(dy, option = "linear") %>% merge(., dV_et_R)
 # --------------------------------------------------------
 # JW: next step, calculate error statistics for different temporal aggregation scales. 
 # --------------------------------------------------------
-
+##################
+# Error Analysis #
+##################
+ 
 # Error due to samping gaps, dQ_R vs. dQ (1:11)
 dy.t <- fortify.zoo(dy) 
 dy.long <- dy.t %>%
