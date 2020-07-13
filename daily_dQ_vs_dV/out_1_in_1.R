@@ -159,7 +159,6 @@ for (i in 1:R){
     if(j == 1){
       Q_est[i, i + 2] <- sum(Q_est[, 2][1:i]);
       Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
-      Q_est[,i + 2][a:(b - 1)] <- NA;
       } 
     else{
       Q_est[j*R + i, i + 2] <- sum(Q_est[, 2][a:b]);
@@ -168,6 +167,7 @@ for (i in 1:R){
   }
 }
 
+Q_est <- Q_est[ ,-2]
 ###################################################################################################################################
 # Rescale: storage data ('V_obs') ##################################################################################
 # NOTE: We used daily storage observations rather than daily storage variations to derive storage variations in a R-day timescale #
@@ -176,7 +176,7 @@ for (i in 1:R){
 V <- y %>% select(., datetime, V) %>% left_join(., et_day)
 
 # A matrix object simulating sampling scenarios
-V_obs <- mx('dV')
+V_obs <- mx('RdV')
 
 V_obs <- V %>% select(., -ET) %>% cbind(., V_obs)
 
@@ -192,13 +192,15 @@ for (i in 1:R){
   }
 }
 
+V_obs <- V_obs[ ,-2]
+
 ###################################################################################################################################
 # Rescale: storage data added with ET ('V_et_obs') ##################################################################################
 # NOTE: We used daily storage observations rather than daily storage variations to derive storage variations in a R-day timescale #
 ###################################################################################################################################
 
 # A matrix object simulating sampling scenarios
-V_et_obs <- mx('dV_et')
+V_et_obs <- mx('RdV_et')
 
 V_et_obs <- V %>% mutate(., V_et = V + ET) %>% select(., datetime, V_et) %>% cbind(., V_et_obs)
 
@@ -214,9 +216,12 @@ for (i in 1:R){
   }
 }
 
+V_et_obs <- V_et_obs[ ,-2]
+
 #############################################################################
 # Simulating observed discharge differences by a SWOT's timescale ('Q_obs') #
 #############################################################################
+
 # Here we simulate the effects of sampling gaps and assumed discharge difference on days without measurements takes on a linear distribution btw sampling days.
 # A matrix object simulating sampling scenarios
 Q_obs <- mx('RdQ');
@@ -234,47 +239,46 @@ for (i in 1:R){
 # Linearly interpolate the discharge differences on days without measurements
 Q_obs <- na_interpolation(Q_obs, option = "linear") %>% select(., -dQ)
 
-# Aggregate daily dQ and dV by a time period of R (representing SWOT time scale)
-# dQ in a unit of millin m3/day
+# Aggregate imputed discharge differences by a time period of R
 for (i in 1:R){
-  for (j in 1:((nrow(Q_obs)-i) %/% R)){
+  for (j in 1:((nrow(Q_obs) - i) %/% R)){
     a <- R*(j - 1) + i + 1; b <- j*R + i;
-    Q_obs[j*R + i, i + 1] <- sum(Q_obs[, i + 1][a:b]);
-    Q_obs[, i + 1][a:(b - 1)] <- NA
+    
+    if(j == 1){
+      Q_obs[i, i + 1] <- sum(Q_obs[1:i, i + 1]);
+      Q_obs[j*R + i, i + 1] <- sum(Q_obs[a:b, i + 1]);
+      Q_obs[,i + 1][a:(b - 1)] <- NA;
+      
+    } 
+    else{    
+      Q_obs[j*R + i, i + 1] <- sum(Q_obs[a:b, i + 1]);
+      Q_obs[a:(b - 1), i + 1] <- NA;
+    }
   }
 }
 
+# do some cleaning
+for (i in 1:R){
+  c <- (nrow(Q_obs) - i) %/% R;
+  
+  for (j in 1:nrow(y)){
+    if(j < i || j > (c*R + i)){
+      Q_obs[j, i + 1] <- NA
+    }
+  }
+}
+# Interpolate the volume variation from discharge difference
+# Here according to our assumption, the daily volume of discharge take on a linear variation
+# Q_obs <- na_interpolation(Q_obs, option = "linear")
+
 # plot the hydrograph
 
-# interpolate the volume variation from discharge difference
-# Here according to our assumption, the daily volume of discharge take on a linear variation
-dy <- na_interpolation(dy, option = "linear") %>% merge(., dV_et_R)
-
-
-## upper and lower error bars
-#dy_error <- dy %>% subset(., select = -c(dQ_R,dV_R,dV_et_R)) %>% fortify.zoo() %>% select(-Index)
-  
-### calculate highest and lowest values for each scenarios/row
-#dy_error$max <- apply(X = dy_error, MARGIN=1, FUN=max)
-#dy_error$min <- apply(X = dy_error, MARGIN=1, FUN=min)
-
-### dy_2 
- #dy_error <- dy_error %>% select(max, min) %>% zoo(., order.by = y$datetime)
- #dy_2 <- dy %>% subset(., select= c(dQ_R,dV_R,dV_et_R)) %>% merge(., dy_error)
-
-# Plot hydrograph with upper/lower bars
-# dygraph(dy_2, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, " days)"), ylab = "Storage change (km^3 / day)") %>% 
-#  dyRangeSelector() %>% dyLegend(width = 600) %>%
-#  dySeries(c("min", "dQ_R", "max"), label = "Observed dQ", color = "red") %>% dySeries("dV_R", label = "Observed dV", color = "seagreen") %>% 
-#  dySeries("dV_et_R", color = "green", drawPoints = TRUE, pointShape = "triangle", pointSize = "3", label = "dV corrected by reservoir evaporation") %>%
-#  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = TRUE) 
-
 # Plot hydrograph showing uncertainty as lines
- dygraph(dy, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, " days)"), ylab = "Storage change (km^3 / day)") %>% 
-  dyRangeSelector() %>% dyLegend(width = 600) %>%
-  dySeries("dV_R", color = "seagreen",strokeWidth = 2, label = "Observed dV") %>% dySeries("dQ_R", color = "red",strokeWidth = 2, label = "Observed dQ") %>%
-  dySeries("dV_et_R", color = "green", drawPoints = TRUE, pointShape = "triangle", pointSize = "3", label = "dV corrected by reservoir evaporation") %>% 
-  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) 
+# dygraph(dy, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: ", R, " days)"), ylab = "Storage change (km^3 / day)") %>% 
+#  dyRangeSelector() %>% dyLegend(width = 600) %>%
+#  dySeries("dV_R", color = "seagreen",strokeWidth = 2, label = "Observed dV") %>% dySeries("dQ_R", color = "red",strokeWidth = 2, label = "Observed dQ") %>%
+#  dySeries("dV_et_R", color = "green", drawPoints = TRUE, pointShape = "triangle", pointSize = "3", label = "dV corrected by reservoir evaporation") %>% 
+#  dyGroup(c(paste0(c("dQ"), 1:R)), color = rep("pink", R)) 
  
 
 
@@ -315,21 +319,29 @@ dy <- na_interpolation(dy, option = "linear") %>% merge(., dV_et_R)
 # --------------------------------------------------------
 # JW: next step, calculate error statistics for different temporal aggregation scales. 
 # --------------------------------------------------------
+
+
 ##################
 # Error Analysis #
 ##################
- 
-# Error due to samping gaps, dQ_R vs. dQ (1:11)
-dy.t <- fortify.zoo(dy) 
-dy.long <- dy.t %>%
-  select(., 3:(3+R)) %>%
-  pivot_longer(-dQ_R, names_to = "variable", values_to = "value") 
 
-# bias, sd, rrmse
-rr_gap <- (dy.long$dQ_R - dy.long$value)/dy.long$value
-b_gap <- mean(rr_gap)
-sd_gap <- sd(rr_gap)
+# Error due to samping gaps, Q_obs vs. Q_est
+phy_error <- data.frame(datetime = y$datetime, stringsAsFactors = FALSE);
+
+# relative residual (RR)
+for(i in 1:R){
+  phy_error[, i + 1] <- (Q_est[, i + 1] - Q_obs[, i + 1])/Q_obs[, i + 1]
+}
+
+# mean of RR (MRR or bias)
+b_gap <- mean(as.matrix(phy_error[, -1]), na.rm = T)
+
+# standard deviation of RR (SDRR)
+sd_gap <- sd(as.matrix(phy_error[, -1]), na.rm = T)
+
+# relative Root Mean Square Errors (rRMSE)
 rrmse_gap <- sqrt(b_gap^2 + sd_gap^2)
+
 b_gap; sd_gap; rrmse_gap
 
 # plot
@@ -338,7 +350,9 @@ anno <- paste0("MRR:",round(b_gap, 3), "\nSDRR:", round(sd_gap, 3),"\nrRMSE:", r
 grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
                           gp=gpar(col="red", fontsize=13, fontface="italic")))
 
+
 range_limit <- max(max(abs(range(dy.long$dQ_R))), max(abs(range(dy.long$value))))
+
 ggplot(dy.long, aes(value, dQ_R, colour = variable)) + geom_point()+ xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
 ggplot(dy.long, aes(value, dQ_R)) + geom_point()+ xlab("dQ (1:11)") + xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
 
@@ -348,10 +362,11 @@ ggplot(dy.long, aes(value, dQ_R)) + geom_point()+ xlab("dQ (1:11)") + xlim(-50,5
 # Physical error dV_R vs. dQ (1:11) 
 
 # w/o ET loss
-dy.long_p <- dy.t %>%
-  select(., c(2, 4:(3+R))) %>%
-  pivot_longer(-dV_R, names_to = "variable", values_to = "value") %>%
-  filter(dV_R != dy.t[1,2])
+test1 <- Q_est %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value")
+
+test2 <- Q_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value")
 
 # bias, sd, rrmse
 rr_p <- (dy.long_p$dV_R - dy.long_p$value)/dy.long_p$value
