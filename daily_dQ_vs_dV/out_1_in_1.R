@@ -316,92 +316,169 @@ for (i in 1:R){
 
 
 
-# --------------------------------------------------------
-# JW: next step, calculate error statistics for different temporal aggregation scales. 
-# --------------------------------------------------------
-
-
 ##################
 # Error Analysis #
 ##################
 
-# Error due to samping gaps, Q_obs vs. Q_est
-phy_error <- data.frame(datetime = y$datetime, stringsAsFactors = FALSE);
+##############################################
+# Error due to samping gaps, Q_obs vs. Q_est #
+##############################################
 
-# relative residual (RR)
+# Create a data frame object 'sa_rr' of Relative Residuals (RR)
+sa_rr <- data.frame(datetime = y$datetime, stringsAsFactors = FALSE);
+
 for(i in 1:R){
-  phy_error[, i + 1] <- (Q_est[, i + 1] - Q_obs[, i + 1])/Q_obs[, i + 1]
+  sa_rr[, i + 1] <- (Q_est[, i + 1] - Q_obs[, i + 1])/Q_obs[, i + 1]
 }
 
 # mean of RR (MRR or bias)
-b_gap <- mean(as.matrix(phy_error[, -1]), na.rm = T)
+b_gap <- mean(as.matrix(sa_rr[, -1]), na.rm = T)
 
 # standard deviation of RR (SDRR)
-sd_gap <- sd(as.matrix(phy_error[, -1]), na.rm = T)
+sd_gap <- sd(as.matrix(sa_rr[, -1]), na.rm = T)
 
 # relative Root Mean Square Errors (rRMSE)
 rrmse_gap <- sqrt(b_gap^2 + sd_gap^2)
 
+# return values for each statistical metrics
 b_gap; sd_gap; rrmse_gap
 
-# plot
-# Create a text
+# Create a mutated dataframe object 'Q_mu' from Q_est and Q_obs
+Q_est_mu <- Q_est %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>%
+  # 'pivot_longer' is a pre-defined function from {tidyverse} that "lengthens" data, increasing the number of rows and decreasing the number of columns.
+  na.omit()
+
+Q_obs_mu <- Q_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>% 
+  select(., -2) %>%
+  na.omit() # deleting rows containing NA
+
+Q_mu <- left_join(Q_est_mu, Q_obs_mu, by="datetime"); 
+names(Q_mu)[3:4] <- c('Q_est', 'Q_obs');
+
+# Plot Q_est vs. Q_obs
+
+# Define annotations of statistical metrics and their position on the plot 
 anno <- paste0("MRR:",round(b_gap, 3), "\nSDRR:", round(sd_gap, 3),"\nrRMSE:", round(rrmse_gap, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
-                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
 
+# Set up the boundary on both dimensions
+r_lim <- max(max(abs(range(Q_mu$Q_est))), max(abs(range(Q_mu$Q_obs))))
 
-range_limit <- max(max(abs(range(dy.long$dQ_R))), max(abs(range(dy.long$value))))
+# Use 'ggplot' function to plot our results
+ggplot(Q_mu, aes(x = Q_est, y = Q_obs, colour = variable)) + 
+  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
+  labs(title = paste0("Q_est vs. Q_obs for ",s_name), x = "Q_est", y = "Q_obs")
 
-ggplot(dy.long, aes(value, dQ_R, colour = variable)) + geom_point()+ xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
-ggplot(dy.long, aes(value, dQ_R)) + geom_point()+ xlab("dQ (1:11)") + xlim(-50,50) + ylim(-50,50) + annotation_custom(grob) + xlab("dQ (1:11)")
+###################################
+# Physical error, V_obs vs. Q_obs # 
+###################################
 
+######################
+# w/o ET loss, V_obs #
+######################
 
+# Create a data frame object 'phy_rr' of Relative Residuals (RR)
+phy_rr <- data.frame(datetime = y$datetime, stringsAsFactors = FALSE);
 
+for(i in 1:R){
+  phy_rr[, i + 1] <- (V_obs[, i + 1] - Q_obs[, i + 1])/Q_obs[, i + 1]
+}
 
-# Physical error dV_R vs. dQ (1:11) 
+# mean of RR (MRR or bias)
+b_phy <- mean(as.matrix(phy_rr[, -1]), na.rm = T) #***
 
-# w/o ET loss
-test1 <- Q_est %>%
-  pivot_longer(-datetime, names_to = "variable", values_to = "value")
+#*** to calculate the mean over an entire data frame object, a mean function can only be applied after the data frame object is converted to matrix ***#
+#*** because columns in a data frame object is stored as a character string. ***#
 
-test2 <- Q_obs %>%
-  pivot_longer(-datetime, names_to = "variable", values_to = "value")
+# standard deviation of RR (SDRR)
+sd_phy <- sd(as.matrix(phy_rr[, -1]), na.rm = T)
 
-# bias, sd, rrmse
-rr_p <- (dy.long_p$dV_R - dy.long_p$value)/dy.long_p$value
-b_p <- mean(rr_p)
-sd_p <- sd(rr_p)
-rrmse_p <- sqrt(b_p^2 + sd_p^2)
-b_p; sd_p; rrmse_p
+# relative Root Mean Square Errors (rRMSE)
+rrmse_phy <- sqrt(b_phy^2 + sd_phy^2)
 
-# plot
-# Create a text
-anno <- paste0("MRR:",round(b_p, 3), "\nSDRR:", round(sd_p, 3),"\nrRMSE:", round(rrmse_p, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
-                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+# return values for each statistical metrics
+b_phy; sd_phy; rrmse_phy
 
-ggplot(dy.long_p, aes(value, dV_R, colour = variable)) + geom_point() + xlab("dQ (1:11)") + xlim(-50,50) + ylim(-50,50) + annotation_custom(grob)
+# Create a mutated dataframe object 'phy_mu' from V_obs and Q_obs
+V_obs_mu <- V_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>%
+  # 'pivot_longer' is a pre-defined function from {tidyverse} that "lengthens" data, increasing the number of rows and decreasing the number of columns.
+  na.omit()
 
+Q_obs_mu <- Q_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>% 
+  select(., -2) %>%
+  na.omit() # deleting rows containing NA
 
-# w/ ET loss
-dy.long_t <- na.interpolation(dy.t)
-dy.long_p_et <- dy.t %>%
-  na.interpolation(.,) %>%
-  select(., c(4:(4+R))) %>%
-  pivot_longer(-dV_et_R, names_to = "variable", values_to = "value")
+phy_mu <- left_join(V_obs_mu, Q_obs_mu, by="datetime"); 
+names(phy_mu)[3:4] <- c('V_obs', 'Q_obs');
 
-# bias, sd, rrmse
-rr_p_et <- (dy.long_p_et$dV_et_R - dy.long_p_et$value)/dy.long_p_et$value
-b_p_et <- mean(rr_p_et)
-sd_p_et <- sd(rr_p_et)
-rrmse_p_et <- sqrt(b_p_et^2 + sd_p_et^2)
-b_p_et; sd_p_et; rrmse_p_et
+# Plot V_obs vs. Q_obs
+# Define annotations of statistical metrics and their position on the plot 
+anno <- paste0("MRR:",round(b_phy, 3), "\nSDRR:", round(sd_phy, 3),"\nrRMSE:", round(rrmse_phy, 3))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
 
-# plot
-# Create a text
-anno <- paste0("MRR:",round(b_p_et, 3), "\nSDRR:", round(sd_p_et, 3),"\nrRMSE:", round(rrmse_p_et, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0,
-                          gp=gpar(col="red", fontsize=13, fontface="italic")))
+# Set up the boundary on both dimensions
+r_lim <- max(max(abs(range(phy_mu$V_obs))), max(abs(range(phy_mu$Q_obs))))
 
-ggplot(dy.long_p_et, aes(value, dV_et_R, colour = variable)) + geom_point() + xlab("dQ (1:11)")+ xlim(-50,50) + ylim(-50,50) + annotation_custom(grob)
+# Use 'ggplot' function to plot our results
+ggplot(phy_mu, aes(x = V_obs, y = Q_obs, colour = variable)) + 
+  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
+  labs(title = paste0("V_obs vs. Q_obs for ",s_name), x = "V_obs", y = "Q_obs")
+
+########################
+# w/ ET loss, V_et_obs #
+########################
+
+# Create a data frame object 'phy_rr_et' of Relative Residuals (RR)
+phy_rr_et <- data.frame(datetime = y$datetime, stringsAsFactors = FALSE);
+
+for(i in 1:R){
+  phy_rr_et[, i + 1] <- (V_et_obs[, i + 1] - Q_obs[, i + 1])/Q_obs[, i + 1]
+}
+
+# mean of RR (MRR or bias)
+b_phy_et <- mean(as.matrix(phy_rr_et[, -1]), na.rm = T) #***
+
+#*** to calculate the mean over an entire data frame object, a mean function can only be applied after the data frame object is converted to matrix ***#
+#*** because columns in a data frame object is stored as a character string. ***#
+
+# standard deviation of RR (SDRR)
+sd_phy_et <- sd(as.matrix(phy_rr_et[, -1]), na.rm = T)
+
+# relative Root Mean Square Errors (rRMSE)
+rrmse_phy_et <- sqrt(b_phy_et^2 + sd_phy_et^2)
+
+# return values for each statistical metrics
+b_phy_et; sd_phy_et; rrmse_phy_et
+
+# Create a mutated dataframe object 'phy_mu_et' from V_et_obs and Q_obs
+V_et_obs_mu <- V_et_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>%
+  # 'pivot_longer' is a pre-defined function from {tidyverse} that "lengthens" data, increasing the number of rows and decreasing the number of columns.
+  na.omit()
+
+Q_obs_mu <- Q_obs %>%
+  pivot_longer(-datetime, names_to = "variable", values_to = "value") %>% 
+  select(., -2) %>%
+  na.omit() # deleting rows containing NA
+
+phy_mu_et <- left_join(V_et_obs_mu, Q_obs_mu, by="datetime"); 
+names(phy_mu_et)[3:4] <- c('V_et_obs', 'Q_obs');
+
+# Plot V_et_obs vs. Q_obs
+
+# Define annotations of statistical metrics and their position on the plot 
+anno <- paste0("MRR:",round(b_phy_et, 3), "\nSDRR:", round(sd_phy_et, 3),"\nrRMSE:", round(rrmse_phy_et, 3))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+# Set up the boundary on both dimensions
+r_lim <- max(max(abs(range(phy_mu_et$V_et_obs))), max(abs(range(phy_mu_et$Q_obs))))
+
+# Use 'ggplot' function to plot our results
+ggplot(phy_mu_et, aes(x = V_et_obs, y = Q_obs, colour = variable)) + 
+  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
+  labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "V_et_obs", y = "Q_obs")
+
