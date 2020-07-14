@@ -1,47 +1,60 @@
-# Code from Aote Xin, up to July 11, 2020
+# Code from Aote Xin, up to July 13, 2020
 # SWOT reservoir-river mass balance
 
 # [NOTES: THESE CODES WERE DEVELOPED FOR 'TESTING A PROPOSED ALGORITHM FOR ESTIMATING WATER DISCHARGE AT RIVER-RESERVOIR INTERFACE: POTENTIAL APPLICATIONS FOR THE SURFACE WATER AND OCEAN TOPOGRAPHY SATELLITE MISSION' PROJECT]
 
-# installing and loading packages that are used in the following script
-# install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS"))
-library("rio"); # Import, Export, and Convert Data Files
+##########################################################
+# install and load packages that are used in this script #
+##########################################################
+
+# install.packages(c("dplyer", "tidyverse","ggplot2", "xts","dygraphs","imputeTS", "plotly"))
+library("rio");       # Import, Export, and Convert Data Files
 library("tidyverse"); # for common data minipulation(dplyr), plotting(ggplot2)
-library("readxl"); # for reading excel files
-library("xts"); # for time-series data object; an extension of ZOO package
-library("dygraphs"); # plotting package for time-series objects
-library("imputeTS"); # Time Series Missing Value Imputation
-library("zoo") # for time-series data object
-library("grid") # for adding annotation in ggplot
+library("readxl");    # for reading excel files
+library("xts");       # for time-series data object; an extension of ZOO package
+library("dygraphs");  # plotting package for time-series objects
+library("imputeTS");  # Time Series Missing Value Imputation
+library("zoo")        # for time-series data object
+library("grid")       # for adding annotation in ggplot
+library("plotly")       # fpr building a interactive scatterplot
 
 #############################
 # Read and convert raw data #
 #############################
 
-# Here we will read the long-term monthly evaportranspiration data developed by Dr. Gao Huilin for Possum Kingdom lake
-s_name <- "Possum Kingdom Lk_09_10"
-R <- 11 # sampling gap / temporal resolution
-et_GRAND_ID <- 1176; et <- read.table(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/Supporting data/ET/Reservoir_evaporation721/", et_GRAND_ID, ".txt"), header = T, stringsAsFactors = FALSE) 
-start_mon <- which(et$Month == 20081001, arr.ind = TRUE); end_mon <- which(et$Month == 20100901, arr.ind = TRUE)
+# candidate's filename and sampling gap (SWOT's temporal resolution)
+s_name <- "Possum Kingdom Lk_09_10"; R <- 11 
+
+# Read the long-term monthly evaportranspiration data developed by Dr. Gao Huilin
+et_GRAND_ID <- 1176; loc_ET <- paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/Supporting data/ET/Reservoir_evaporation721/", et_GRAND_ID, ".txt");
+et <- read.table(loc_ET, header = T, stringsAsFactors = FALSE); head(et, 6)
+
+# Define two vectors 'start/end_mon' storing the positions of in situ data's temporal duration in ET table. These are used for slicing the original ET table
+# For instance: 'start_mon' being 296 indicates the starting month of is situ data is at 296th row in original ET table
+start_mon <- which(et$Month == 20081001, arr.ind = TRUE); end_mon <- which(et$Month == 20100901, arr.ind = TRUE);
 start_yr <- 2008; end_yr <- 2010 
 
-head(et, 6)
 
-# In the next chunk, the in situ data are read which includes the discharge measurements for inflow and outflow rivers and reservoir storage measurements all at a daily basis. Data acquired from USGS NWIS.
-y <- excel_sheets(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")) %>% 
-  map(~read_xlsx(paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx"),.)) %>% ## convert multiple sheets from Excel into one sheet
+# read in situ data that includes the discharge observations for inflow and outflow rivers and reservoir storage observations ***ALL AT A DAILY TIMESCALE***. Data acquired from USGS NWIS.
+loc_insitu <- paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/raw_data_by_num_of_streams/out_1_in_1/", s_name, ".xlsx")
+
+y <- excel_sheets(loc_insitu) %>% map(~read_xlsx(loc_insitu,.)) %>% # 'map' function converts multiple sheets from Excel into one sheet
   data.frame()
 
-# tidy data
+# define a function 'tidy' extracts useful columns from the raw data frame and returns a single dataframe with date, site numbers, discharge measurements for inflow and outflow rivers and reservoir storage measurements
+# NOTE: 32400: observation at midnight; 00003: daily mean observation; 30600: observation at 6:00am; 30800: observation at 8:00am
+
+# column names for newly derived data frame 'y'
 n = c("V", "Q_out", "Q_in"); m = c("site_V", "site_out", "site_in")
 
-# function "tidy" extracts useful columns from the raw data frame and returns a single dataframe with date, site numbers, discharge measurements for inflow and outflow rivers and reservoir storage measurements
-# 32400: observation at midnight; 00003: daily mean observation; 30600: observation at 6:00am; 30800: observation at 8:00am
 tidy <- function(s){ 
-  s <- s %>% select(., datetime, contains("site_no"), ends_with(c("32400","30800","30600")), contains("00003"),-contains("cd")) %>%
-             filter(., site_no != "15s") %>% rename_at(vars(c(5,6,7)), ~ n) %>% rename_at(vars(contains("site")), ~ m) 
-  s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30")
-  return(s)}
+  s <- s %>% select(., datetime, contains("site_no"), ends_with(c("32400", "30800", "30600")), contains("00003"),-contains("cd")) %>%
+             filter(., site_no != "15s") %>% rename_at(vars(c(5, 6, 7)), ~ n) %>% rename_at(vars(contains("site")), ~ m);
+  
+  s$datetime <- as.Date(as.numeric(s$datetime), origin = "1899-12-30");
+  
+  return(s)
+  }
 
 y <- tidy(y); head(y, 6)
 
@@ -50,27 +63,28 @@ y <- tidy(y); head(y, 6)
 # Derive and plot daily dV and dQ #
 ###################################
 
-# Unit Conversion
-convert_af_mcm = 1233.48/10.0^6 ## convert from Thousand acre feet to million m3
-convert_cfs_mcmd = 3600.0*24.0*0.0283168/10.0^6 ## convert from cubic feet per second to million m3 per day;
+# Imperial to Metric system conversion
+convert_af_mcm = 1233.48 / 10.0^6; ## convert from Thousand acre feet or acre feet to million m3
+convert_cfs_mcmd = 3600.0*24.0*0.0283168 / 10.0^6; ## convert from cubic feet per second to million m3 per day;
+
 y$V <- as.numeric(y$V) * convert_af_mcm; 
 y$Q_out <- as.numeric(y$Q_out) * convert_cfs_mcmd; 
 y$Q_in <- as.numeric(y$Q_in) * convert_cfs_mcmd; 
 
-# calculate mass balance
+# calculate daily discharge difference 'dQ' and daily storage variation 'dV'
 dV <- y$V %>% append(.,NA, 0); length(dV) <- nrow(y); dV <- y$V - dV
 y <- y %>% mutate(.,dQ = Q_in - Q_out) %>% cbind(., dV)
 
 # correlation of dV and dQ
 correlation <- cor(y$dV, y$dQ, use = "complete.obs")
 
-# Plot dV vs dQ
+# Plot daily discharge difference 'dQ' vs. daily storage variation 'dV'
 range_limit <- max(abs(min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE))), 
                    abs(max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE))))
          
 ggplot(y) +
   geom_point(mapping = aes(x = dQ, y = dV), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
-  labs(title ="Daily dQ vs dV", x = "dQ (m^3)", y = "dV (m^3)") +
+  labs(title =paste0("Daily dQ vs dV for ", s_name), x = "dQ (m^3)", y = "dV (m^3)") +
   xlim(-range_limit, range_limit) +  ylim(-range_limit, range_limit) +
   geom_segment(aes(x = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)),  y = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)), xend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE)), yend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE))),
                linetype = "dashed")
@@ -80,33 +94,39 @@ ggplot(y) +
 # Rescale: ET data #
 ####################
 
-# This code chunk rescales the monthly average ET data to a daily time scale.
-head(et, 6)
+# rescale the monthly average ET data to a daily timescale, assuming ET remains unchanged every day for each month
+# Unit conversion from thousand m3/month to million m3/day
+# CAUTION: different month has different num of days
 
-# current unit million m3/month to million m3/day
-# Note: different month has different num of days
+# Slice ET data based on in situ data's temporal duration
 et_mon <- et[start_mon:end_mon,]
 
-# Unit Conversion for ET
-convert_tcm_mcm = 0.001 ## convert from Thousand m3/month to million m3/month
-et_mon$ET <- apply(et_mon[,6:8], 1, mean)
+# Unit conversion from thousand m3/month to million m3/month
+convert_tcm_mcm = 0.001; 
+et_mon$ET <- apply(et_mon[,6:8], 1, mean);
 et_mon <- et_mon %>%  select(., -c(2:8)) %>% mutate(., ET = ET*convert_tcm_mcm)
+
+# Standardize date's format. For instance, from '20081001' to '2008-10-01'
 et_mon$Month <- as.Date(strptime(et_mon$Month, "%Y%m%d"))
 
-et_day <- left_join(y, et_mon, by = c("datetime" = "Month")) %>% select(c("datetime","ET"))
-et_day <- separate(et_day, 1, c("yr", "mon", "day"), convert = T)
+# define a data frame object 'et_day' with date index at a daily time step
+et_day <- left_join(y, et_mon, by = c("datetime" = "Month")) %>% select(c("datetime","ET"));
 
-# A loop converting monthly ET data to daily ET data based on an assumption that ET remains unchanged every day for each month
+# Use a loop to convert monthly ET data to daily ET data
+et_day <- separate(et_day, 1, c("yr", "mon", "day"), convert = T);
+
 for (i in start_yr:end_yr){
   for (j in min(et_day[et_day$yr == i,]$mon):max(et_day[et_day$yr == i,]$mon)){
-    ET_daily <- et_day[et_day$yr == i & et_day$mon == j,][1,4]/nrow(et_day[et_day$yr == i & et_day$mon == j,])
+    
+    ET_daily <- et_day[et_day$yr == i & et_day$mon == j,][1,4]/nrow(et_day[et_day$yr == i & et_day$mon == j,]);
+    
     for (k in 1:nrow(et_day[et_day$yr== i & et_day$mon == j,])){
       et_day[et_day$yr== i & et_day$mon == j,][k,4] <- ET_daily
     }
   }
 }
 
-et_day <- et_day %>% unite("datetime", c("yr","mon", "day"), sep = "-"); et_day$datetime <- as.Date(et_day$datetime)
+et_day <- et_day %>% unite("datetime", c("yr","mon", "day"), sep = "-"); et_day$datetime <- as.Date(et_day$datetime);
 head(et_day, 6)
 
 
@@ -114,10 +134,10 @@ head(et_day, 6)
 # Rescale: in situ data #
 #########################
 
-# This code chunk rescales daily discharge difference and storage variation derived from previous codes by a time period of R (a variable representing SWOT time scale)
-# Note: dQ in a unit of millin m3/day, dV in a unit of million m3
+# Rescale daily discharge difference and storage variation derived from previous codes by a time period of R days
+# NOTE: discharge difference in an unit of millin m3/day (volumetric flow rate), storage variation in an unit of million m3 (volume)
 
-# Define a function 'mx' that returns a matrix simulating sampling scenarios. ***Required input as a charactor string: 'colname_mx' as column names in the returned matrix
+# Define a function 'mx' that returns a matrix simulating sampling scenarios. ***Required input: a charactor string 'colname_mx' as column names in the returned matrix
 mx <- function(colname_mx){
   mx <- matrix(nrow = nrow(y));
   for (i in 1:R) {
@@ -138,6 +158,7 @@ mx <- function(colname_mx){
   return(mx) 
 }
 
+
 ###############################################################################################
 # Rescale: discharge data ('Q_est') ###########################################################
 # NOTE:We used daily discharge difference to derive discharge difference in a R-day timescale #
@@ -150,8 +171,8 @@ Q_est <- mx('dQ')
 
 Q_est <- cbind(Q, Q_est)
 
-# Aggregate daily discharge difference to a volumeric unit
-# NOTE: dQ in a unit of millin m3/day, Q in a unit of million m3
+# Aggregate daily discharge difference to a unit of volume
+# NOTE: input in an unit of volumetric flow, output in an unit of volume
 for (i in 1:R){
   for (j in 1:((nrow(Q_est) - i) %/% R)){
     a <- R*(j - 1) + i + 1; b <- j*R + i;
@@ -168,8 +189,10 @@ for (i in 1:R){
 }
 
 Q_est <- Q_est[ ,-2]
+
+
 ###################################################################################################################################
-# Rescale: storage data ('V_obs') ##################################################################################
+# Rescale: storage data ('V_obs') #################################################################################################
 # NOTE: We used daily storage observations rather than daily storage variations to derive storage variations in a R-day timescale #
 ###################################################################################################################################
 
@@ -194,13 +217,14 @@ for (i in 1:R){
 
 V_obs <- V_obs[ ,-2]
 
+
 ###################################################################################################################################
-# Rescale: storage data added with ET ('V_et_obs') ##################################################################################
+# Rescale: storage data added with ET ('V_et_obs') ################################################################################
 # NOTE: We used daily storage observations rather than daily storage variations to derive storage variations in a R-day timescale #
 ###################################################################################################################################
 
 # A matrix object simulating sampling scenarios
-V_et_obs <- mx('RdV_et')
+V_et_obs <- mx('RdV_et');
 
 V_et_obs <- V %>% mutate(., V_et = V + ET) %>% select(., datetime, V_et) %>% cbind(., V_et_obs)
 
@@ -218,11 +242,13 @@ for (i in 1:R){
 
 V_et_obs <- V_et_obs[ ,-2]
 
+
+
 #############################################################################
 # Simulating observed discharge differences by a SWOT's timescale ('Q_obs') #
 #############################################################################
 
-# Here we simulate the effects of sampling gaps and assumed discharge difference on days without measurements takes on a linear distribution btw sampling days.
+# We simulate the effects of sampling gaps and assume discharge differences on days without observations take on a linear distribution btw sampling days.
 # A matrix object simulating sampling scenarios
 Q_obs <- mx('RdQ');
 Q_obs <- cbind(Q, Q_obs)
@@ -239,7 +265,7 @@ for (i in 1:R){
 # Linearly interpolate the discharge differences on days without measurements
 Q_obs <- na_interpolation(Q_obs, option = "linear") %>% select(., -dQ)
 
-# Aggregate imputed discharge differences by a time period of R
+# Aggregate imputed discharge differences by a time period of R days
 for (i in 1:R){
   for (j in 1:((nrow(Q_obs) - i) %/% R)){
     a <- R*(j - 1) + i + 1; b <- j*R + i;
@@ -257,7 +283,7 @@ for (i in 1:R){
   }
 }
 
-# do some cleaning
+# do some cleaning at 'heads' and 'ends' of columns
 for (i in 1:R){
   c <- (nrow(Q_obs) - i) %/% R;
   
@@ -267,6 +293,12 @@ for (i in 1:R){
     }
   }
 }
+
+
+
+#################################################################################################################################################################
+#################################################################################################################################################################
+#################################################################################################################################################################
 # Interpolate the volume variation from discharge difference
 # Here according to our assumption, the daily volume of discharge take on a linear variation
 # Q_obs <- na_interpolation(Q_obs, option = "linear")
@@ -313,12 +345,13 @@ for (i in 1:R){
 #dygraph(xx, main = paste0("Uncertainty Analysis for SWOT Observations of ", s_name, " (Sampling Gap: monthly)"), ylab = "Storage change (km^3 / day)") %>% 
 #  dyRangeSelector() %>% dyLegend(width = 600) %>% 
 #  dySeries("dV_R", color = "seagreen",strokeWidth = 1) %>% dySeries("dQ_R", color = "red",strokeWidth = 1) %>% dySeries("dV_et_R", color = "green", pointShape = "triangle", pointSize = "3") 
+#################################################################################################################################################################
+#################################################################################################################################################################
+#################################################################################################################################################################
 
-
-
-##################
-# Error Analysis #
-##################
+####################
+# Error Statistics #
+####################
 
 ##############################################
 # Error due to samping gaps, Q_obs vs. Q_est #
@@ -358,18 +391,31 @@ Q_mu <- left_join(Q_est_mu, Q_obs_mu, by="datetime");
 names(Q_mu)[3:4] <- c('Q_est', 'Q_obs');
 
 # Plot Q_est vs. Q_obs
-
 # Define annotations of statistical metrics and their position on the plot 
-anno <- paste0("MRR:",round(b_gap, 3), "\nSDRR:", round(sd_gap, 3),"\nrRMSE:", round(rrmse_gap, 3))
+anno <- paste0("MRR(%):",round(b_gap, 3), "\nSDRR(%):", round(sd_gap, 3),"\nrRMSE(%):", round(rrmse_gap, 3))
 grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(Q_mu$Q_est))), max(abs(range(Q_mu$Q_obs))))
 
 # Use 'ggplot' function to plot our results
-ggplot(Q_mu, aes(x = Q_est, y = Q_obs, colour = variable)) + 
-  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
-  labs(title = paste0("Q_est vs. Q_obs for ",s_name), x = "Q_est", y = "Q_obs")
+sa_p <- ggplot(Q_mu, aes(x = Q_obs, y = Q_est, colour = variable)) + 
+          geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
+          geom_vline(xintercept = 0, color = "black", lty = 2) +
+          xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
+          labs(title = paste0("Q_est vs. Q_obs for ",s_name), x = "Q_obs", y = "Q_est")
+
+sa_plot <- sa_p + geom_point()
+
+# return static and interactive plot
+sa_plot; ggplotly(sa_plot)
+
+# density plot with hollow circles 
+sa_den_plot <- sa_p +
+  geom_point(shape = 1, col = "blue", alpha = 0.1) +  theme_bw()
+
+# return static and interactive plot
+sa_den_plot; ggplotly(sa_den_plot)
 
 ###################################
 # Physical error, V_obs vs. Q_obs # 
@@ -417,16 +463,30 @@ names(phy_mu)[3:4] <- c('V_obs', 'Q_obs');
 
 # Plot V_obs vs. Q_obs
 # Define annotations of statistical metrics and their position on the plot 
-anno <- paste0("MRR:",round(b_phy, 3), "\nSDRR:", round(sd_phy, 3),"\nrRMSE:", round(rrmse_phy, 3))
+anno <- paste0("MRR(%):",round(b_phy, 3), "\nSDRR(%):", round(sd_phy, 3),"\nrRMSE(%):", round(rrmse_phy, 3))
 grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(phy_mu$V_obs))), max(abs(range(phy_mu$Q_obs))))
 
 # Use 'ggplot' function to plot our results
-ggplot(phy_mu, aes(x = V_obs, y = Q_obs, colour = variable)) + 
-  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
-  labs(title = paste0("V_obs vs. Q_obs for ",s_name), x = "V_obs", y = "Q_obs")
+phy_p <- ggplot(phy_mu, aes(x = Q_obs, y = V_obs, colour = variable)) + 
+          geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
+          geom_vline(xintercept = 0, color = "black", lty = 2) +
+          xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
+          labs(title = paste0("V_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_obs")
+
+phy_plot <- phy_p + geom_point()
+
+# return static and interactive plot
+phy_plot; ggplotly(phy_plot)
+
+# density plot as circles with no fill
+phy_den_plot <- phy_p +
+  geom_point(shape = 1, col = "blue", alpha = 0.1) + theme_bw()
+
+# return static and interactive plot
+phy_den_plot; ggplotly(phy_den_plot)
 
 ########################
 # w/ ET loss, V_et_obs #
@@ -469,16 +529,62 @@ phy_mu_et <- left_join(V_et_obs_mu, Q_obs_mu, by="datetime");
 names(phy_mu_et)[3:4] <- c('V_et_obs', 'Q_obs');
 
 # Plot V_et_obs vs. Q_obs
-
 # Define annotations of statistical metrics and their position on the plot 
-anno <- paste0("MRR:",round(b_phy_et, 3), "\nSDRR:", round(sd_phy_et, 3),"\nrRMSE:", round(rrmse_phy_et, 3))
+anno <- paste0("MRR(%):",round(b_phy_et, 3), "\nSDRR(%):", round(sd_phy_et, 3),"\nrRMSE(%):", round(rrmse_phy_et, 3))
 grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(phy_mu_et$V_et_obs))), max(abs(range(phy_mu_et$Q_obs))))
 
 # Use 'ggplot' function to plot our results
-ggplot(phy_mu_et, aes(x = V_et_obs, y = Q_obs, colour = variable)) + 
-  geom_point()+ xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
-  labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "V_et_obs", y = "Q_obs")
+phy_et_p <- ggplot(phy_mu_et, aes(x = Q_obs, y = V_et_obs, colour = variable)) + 
+              geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
+              geom_vline(xintercept = 0, color = "black", lty = 2) +
+              xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + 
+              annotation_custom(grob) +
+              labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_et_obs")
+
+phy_et_plot <- phy_et_p + geom_point()
+
+# return static and interactive plot
+phy_et_plot; ggplotly(phy_et_plot)
+
+# density plot as circles with no fill
+phy_et_den_plot <- phy_et_p +
+                    geom_point(shape = 1, col = "blue", alpha = 0.1) +  theme_bw()
+
+# return static and interactive plot
+phy_et_den_plot; ggplotly(phy_et_den_plot)
+
+######################################################################################
+# density plot with hexbin chart
+# phy_et_den_plot <- ggplot(phy_mu_et, aes(x = Q_obs, y = V_et_obs)) + 
+#  geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
+#  geom_vline(xintercept = 0, color = "black", lty = 2) +
+#  geom_hex(bins = 140) +
+#  scale_fill_gradientn(colours=c("blue","red"), 
+#                       name = "Frequency", 
+#                       na.value=NA) +
+#  theme_bw() + 
+#  xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + 
+#  annotation_custom(grob) +
+#  labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_et_obs")
+
+# density plot with 2d Histogram 
+#phy_et_den_plot <- ggplot(phy_mu_et, aes(x = Q_obs, y = V_et_obs)) + 
+#  geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
+#  geom_vline(xintercept = 0, color = "black", lty = 2) +
+#  geom_bin2d(bins = 220) +
+#  scale_fill_gradientn(colours=c("blue","red"), 
+#                       name = "Frequency", 
+#                       na.value=NA) +
+#  theme_bw() + 
+#  xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + 
+#  annotation_custom(grob) +
+#  labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_et_obs")
+######################################################################################
+
+
+
+
 
