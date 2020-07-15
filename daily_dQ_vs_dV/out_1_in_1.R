@@ -1,4 +1,4 @@
-# Code from Aote Xin, up to July 13, 2020
+# Code from Aote Xin, up to July 15, 2020
 # SWOT reservoir-river mass balance
 
 # [NOTES: THESE CODES WERE DEVELOPED FOR 'TESTING A PROPOSED ALGORITHM FOR ESTIMATING WATER DISCHARGE AT RIVER-RESERVOIR INTERFACE: POTENTIAL APPLICATIONS FOR THE SURFACE WATER AND OCEAN TOPOGRAPHY SATELLITE MISSION' PROJECT]
@@ -585,6 +585,44 @@ phy_et_den_plot; ggplotly(phy_et_den_plot)
 ######################################################################################
 
 
+############################
+# 11 day level (1, 12, 23) #
+############################
+
+# linearly interpolate ***
+Q_obs_11 <- na_interpolation(Q_obs, option = "linear")
+
+# aggregate
+n <- sum(!is.na(Q_obs[, 2]))
+for(i in 1:R){
+
+  indices <- 1; r <- R
+  for(k in 1:n){
+    indices <- append(indices, r + 1); r <- r + R;
+  }
+  
+  for(j in 1:nrow(y)){
+    if(j %in% indices){
+      
+    }else{
+      Q_obs_11[j, i + 1]  <- NA
+    }
+  }
+}
+
+Q_obs_11 <- na_interpolation(Q_obs_11, option = "linear")
+
+# plot the hydrograph
+
+x <- vector()
+for (i in 1:R){
+  x <- append(x, range(Q_obs_11[, 1+i]))
+}
+
+plot(ylim = range(x), x=Q_obs_11[,1], y = Q_obs_11[,2], frame = T, type = "l", col = "gray")
+for(i in 1:R){
+  lines(x=Q_obs_11[,1], y = Q_obs_11[,2+i], col = "gray")
+}
 
 
 
