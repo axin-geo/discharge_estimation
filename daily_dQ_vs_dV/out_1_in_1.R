@@ -23,16 +23,16 @@ library("plotly")       # fpr building a interactive scatterplot
 #############################
 
 # candidate's filename and sampling gap (SWOT's temporal resolution)
-s_name <- "Possum Kingdom Lk_09_10"; R <- 11 
+s_name <- "Lake Havasu_13_14"; R <- 11 
 
 # Read the long-term monthly evaportranspiration data developed by Dr. Gao Huilin
-et_GRAND_ID <- 1176; loc_ET <- paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/Supporting data/ET/Reservoir_evaporation721/", et_GRAND_ID, ".txt");
+et_GRAND_ID <- 629; loc_ET <- paste0("D:/Aote/OneDrive - Kansas State University/SWOT_from_Aote/Supporting data/ET/Reservoir_evaporation721/", et_GRAND_ID, ".txt");
 et <- read.table(loc_ET, header = T, stringsAsFactors = FALSE); head(et, 6)
 
 # Define two vectors 'start/end_mon' storing the positions of in situ data's temporal duration in ET table. These are used for slicing the original ET table
 # For instance: 'start_mon' being 296 indicates the starting month of is situ data is at 296th row in original ET table
-start_mon <- which(et$Month == 20081001, arr.ind = TRUE); end_mon <- which(et$Month == 20100901, arr.ind = TRUE);
-start_yr <- 2008; end_yr <- 2010 
+start_mon <- which(et$Month == 20121001, arr.ind = TRUE); end_mon <- which(et$Month == 20140901, arr.ind = TRUE);
+start_yr <- 2012; end_yr <- 2014 
 
 
 # read in situ data that includes the discharge observations for inflow and outflow rivers and reservoir storage observations ***ALL AT A DAILY TIMESCALE***. Data acquired from USGS NWIS.
@@ -64,7 +64,7 @@ y <- tidy(y); head(y, 6)
 ###################################
 
 # Imperial to Metric system conversion
-convert_af_mcm = 1233.48 / 10.0^6; ## convert from Thousand acre feet or acre feet to million m3
+convert_af_mcm = 1000*1233.48 / 10.0^6; ## convert from Thousand acre feet or acre feet to million m3
 convert_cfs_mcmd = 3600.0*24.0*0.0283168 / 10.0^6; ## convert from cubic feet per second to million m3 per day;
 
 y$V <- as.numeric(y$V) * convert_af_mcm; 
@@ -83,11 +83,17 @@ range_limit <- max(abs(min(min(y$dV, na.rm = TRUE), min(y$dQ,na.rm = TRUE))),
                    abs(max(max(y$dV,na.rm = TRUE), max(y$dQ, na.rm = TRUE))))
          
 ggplot(y) +
-  geom_point(mapping = aes(x = dQ, y = dV), color="darkgreen", shape= 17, alpha = 1/2, size = 3, na.rm = TRUE) +
-  labs(title =paste0("Daily dQ vs dV for ", s_name), x = "dQ (m^3)", y = "dV (m^3)") +
+  geom_point(mapping = aes(x = dQ, y = dV), color="darkgreen", shape= 19, alpha = 0.15, size = 2.2, na.rm = TRUE) +
+  labs(title =paste0("Daily Discharge Difference vs Storage Variation for \n", s_name), x = "dQ (m3)", y = "dV (m3)") +
   xlim(-range_limit, range_limit) +  ylim(-range_limit, range_limit) +
-  geom_segment(aes(x = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)),  y = min(min(dV, na.rm = TRUE), min(dQ,na.rm = TRUE)), xend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE)), yend = max(max(dV,na.rm = TRUE), max(dQ, na.rm = TRUE))),
-               linetype = "dashed")
+  theme(plot.title = element_text(size = 11, hjust = 0.5),
+        axis.title = element_text(size = 9.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white", colour = "white",
+                                        size = 0.3, linetype = "solid"),
+        axis.line = element_line(color = "black")) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", alpha = 0.5)
 
 
 ####################
@@ -393,7 +399,7 @@ names(Q_mu)[3:4] <- c('Q_est', 'Q_obs');
 # Plot Q_est vs. Q_obs
 # Define annotations of statistical metrics and their position on the plot 
 anno <- paste0("MRR(%):",round(b_gap, 3), "\nSDRR(%):", round(sd_gap, 3),"\nrRMSE(%):", round(rrmse_gap, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize = 10, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(Q_mu$Q_est))), max(abs(range(Q_mu$Q_obs))))
@@ -403,19 +409,27 @@ sa_p <- ggplot(Q_mu, aes(x = Q_obs, y = Q_est, colour = variable)) +
           geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
           geom_vline(xintercept = 0, color = "black", lty = 2) +
           xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
-          labs(title = paste0("Q_est vs. Q_obs for ",s_name), x = "Q_obs", y = "Q_est")
+          labs(title = paste0("Estimated Discharge Diff vs Observed Discharge Diff"), subtitle = paste0("R=", R, ", ", s_name), x = "Q_obs (million m3)", y = "Q_est (million m3)") +
+          theme(plot.title = element_text(size = 11, hjust = 0.5),
+                plot.subtitle = element_text(size = 9, hjust = 1),
+                axis.title = element_text(size = 9.5),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),
+                panel.background = element_rect(fill = "white", colour = "white",
+                                        size = 0.3, linetype = "solid"),
+                axis.line = element_line(color = "black"))  
 
 sa_plot <- sa_p + geom_point()
 
 # return static and interactive plot
-sa_plot; ggplotly(sa_plot)
+sa_plot; #ggplotly(sa_plot)
 
 # density plot with hollow circles 
 sa_den_plot <- sa_p +
-  geom_point(shape = 1, col = "blue", alpha = 0.1) +  theme_bw()
+  geom_point(color="darkblue", shape= 19, alpha = 0.15, size = 2.2) 
 
 # return static and interactive plot
-sa_den_plot; ggplotly(sa_den_plot)
+sa_den_plot; #ggplotly(sa_den_plot)
 
 ###################################
 # Physical error, V_obs vs. Q_obs # 
@@ -464,7 +478,7 @@ names(phy_mu)[3:4] <- c('V_obs', 'Q_obs');
 # Plot V_obs vs. Q_obs
 # Define annotations of statistical metrics and their position on the plot 
 anno <- paste0("MRR(%):",round(b_phy, 3), "\nSDRR(%):", round(sd_phy, 3),"\nrRMSE(%):", round(rrmse_phy, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=10, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(phy_mu$V_obs))), max(abs(range(phy_mu$Q_obs))))
@@ -474,19 +488,27 @@ phy_p <- ggplot(phy_mu, aes(x = Q_obs, y = V_obs, colour = variable)) +
           geom_abline(intercept = 0, slope = 0, color = "black", lty = 2) +
           geom_vline(xintercept = 0, color = "black", lty = 2) +
           xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + annotation_custom(grob) +
-          labs(title = paste0("V_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_obs")
+          labs(title = paste0("Observed Storage Variation vs Observed Discharge Diff"), subtitle = paste0("R=", R, ", ", s_name), x = "Q_obs (million m3)", y = "V_obs (million m3)") +
+          theme(plot.title = element_text(size = 11, hjust = 0.5),
+                plot.subtitle = element_text(size = 9, hjust = 1),
+                axis.title = element_text(size = 9.5),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),
+                panel.background = element_rect(fill = "white", colour = "white",
+                                        size = 0.3, linetype = "solid"),
+                axis.line = element_line(color = "black"))  
 
 phy_plot <- phy_p + geom_point()
 
 # return static and interactive plot
-phy_plot; ggplotly(phy_plot)
+phy_plot; #ggplotly(phy_plot)
 
 # density plot as circles with no fill
 phy_den_plot <- phy_p +
-  geom_point(shape = 1, col = "blue", alpha = 0.1) + theme_bw()
+  geom_point(color="darkblue", shape= 19, alpha = 0.15, size = 2.2) 
 
 # return static and interactive plot
-phy_den_plot; ggplotly(phy_den_plot)
+phy_den_plot; #ggplotly(phy_den_plot)
 
 ########################
 # w/ ET loss, V_et_obs #
@@ -531,7 +553,7 @@ names(phy_mu_et)[3:4] <- c('V_et_obs', 'Q_obs');
 # Plot V_et_obs vs. Q_obs
 # Define annotations of statistical metrics and their position on the plot 
 anno <- paste0("MRR(%):",round(b_phy_et, 3), "\nSDRR(%):", round(sd_phy_et, 3),"\nrRMSE(%):", round(rrmse_phy_et, 3))
-grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=13, fontface="italic")))
+grob <- grobTree(textGrob(anno, x=0.1,  y=0.9, hjust=0, gp=gpar(col="red", fontsize=10, fontface="italic")))
 
 # Set up the boundary on both dimensions
 r_lim <- max(max(abs(range(phy_mu_et$V_et_obs))), max(abs(range(phy_mu_et$Q_obs))))
@@ -542,19 +564,28 @@ phy_et_p <- ggplot(phy_mu_et, aes(x = Q_obs, y = V_et_obs, colour = variable)) +
               geom_vline(xintercept = 0, color = "black", lty = 2) +
               xlim(-r_lim,r_lim) + ylim(-r_lim,r_lim) + 
               annotation_custom(grob) +
-              labs(title = paste0("V_et_obs vs. Q_obs for ",s_name), x = "Q_obs", y = "V_et_obs")
+              labs(title = paste0("Observed Storage Variation&ET vs Observed Discharge Diff"), subtitle = paste0("R=", R, ", ", s_name), x = "Q_obs (million m3)", y = "V_et_obs (million m3)") + 
+              theme(plot.title = element_text(size = 10.5, hjust = 0.5),
+                    plot.subtitle = element_text(size = 9, hjust = 1),
+                    axis.title = element_text(size = 9.5),
+                    panel.grid.major = element_blank(),
+                    panel.grid.minor = element_blank(),
+                    panel.background = element_rect(fill = "white", colour = "white",
+                                        size = 0.3, linetype = "solid"),
+                    axis.line = element_line(color = "black"))  
 
 phy_et_plot <- phy_et_p + geom_point()
 
 # return static and interactive plot
-phy_et_plot; ggplotly(phy_et_plot)
+phy_et_plot; #ggplotly(phy_et_plot)
 
 # density plot as circles with no fill
 phy_et_den_plot <- phy_et_p +
-                    geom_point(shape = 1, col = "blue", alpha = 0.1) +  theme_bw()
+  geom_point(color="darkblue", shape= 19, alpha = 0.15, size = 2.2) 
 
 # return static and interactive plot
-phy_et_den_plot; ggplotly(phy_et_den_plot)
+phy_et_den_plot; #ggplotly(phy_et_den_plot)
+
 
 ######################################################################################
 # density plot with hexbin chart
@@ -593,7 +624,7 @@ phy_et_den_plot; ggplotly(phy_et_den_plot)
 Q_obs_11 <- na_interpolation(Q_obs, option = "linear")
 
 # aggregate
-n <- sum(!is.na(Q_obs[, 2]))
+n <- sum(!is.na(Q_obs[, 2]));
 for(i in 1:R){
 
   indices <- 1; r <- R
@@ -612,17 +643,18 @@ for(i in 1:R){
 
 Q_obs_11 <- na_interpolation(Q_obs_11, option = "linear")
 
-# plot the hydrograph
-
+# plot the 11-day level hydrograph
 x <- vector()
 for (i in 1:R){
   x <- append(x, range(Q_obs_11[, 1+i]))
 }
 
-plot(ylim = range(x), x=Q_obs_11[,1], y = Q_obs_11[,2], frame = T, type = "l", col = "gray")
-for(i in 1:R){
+
+plot(ylim = range(x), x = Q_obs_11$datetime, y = Q_obs_11[,2], type = "l", col = "gray", cex.axis = 0.7, xlab = "", ylab ='')
+  title(main = paste0("11-day level hydrograph of ", s_name,"\nR=", R), xlab = "Year", ylab = "Storage variation due to observed \n discharge differences (million m3)", mgp=c(2,1,0), cex.lab = 0.8)
+  grid(nx = nrow(y)%/%60)
+  abline(h = 0, col = "black", lty = 2)
+for(i in 1:R-1){
   lines(x=Q_obs_11[,1], y = Q_obs_11[,2+i], col = "gray")
 }
-
-
 
